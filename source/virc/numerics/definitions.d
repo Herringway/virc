@@ -368,6 +368,14 @@ enum Numeric {
 	ERR_METADATARATELIMIT = "770",
 	///	<Target> [<RetryAfter>]
 	ERR_METADATASYNCLATER = "771",
+	/// :<Key1> [<Key2> ...]
+	RPL_METADATASUBOK = "775",
+	/// :<Key1> [<Key2> ...]
+	RPL_METADATAUNSUBOK = "776",
+	/// :<Key1> [<Key2> ...]
+	RPL_METADATASUBS = "777",
+	/// <Key>
+	ERR_METADATATOOMANYSUBS = "778",
 	//SASL: http://ircv3.net/specs/extensions/sasl-3.1.html
 	///
 	RPL_LOGGEDIN = "900",

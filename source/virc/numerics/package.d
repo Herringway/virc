@@ -5,6 +5,7 @@ module virc.numerics;
 
 public import virc.numerics.definitions;
 public import virc.numerics.isupport;
+public import virc.numerics.metadata;
 public import virc.numerics.misc;
 public import virc.numerics.monitor;
 public import virc.numerics.rfc1459;
