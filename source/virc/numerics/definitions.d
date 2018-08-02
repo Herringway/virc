@@ -364,18 +364,18 @@ enum Numeric {
 	ERR_KEYNOTSET = "768",
 	///	<Target> <Key> :permission denied
 	ERR_KEYNOPERMISSION = "769",
-	///	<Target> <Key> [<RetryAfter>]
-	ERR_METADATARATELIMIT = "770",
-	///	<Target> [<RetryAfter>]
-	ERR_METADATASYNCLATER = "771",
 	/// :<Key1> [<Key2> ...]
-	RPL_METADATASUBOK = "775",
+	RPL_METADATASUBOK = "770",
 	/// :<Key1> [<Key2> ...]
-	RPL_METADATAUNSUBOK = "776",
+	RPL_METADATAUNSUBOK = "771",
 	/// :<Key1> [<Key2> ...]
-	RPL_METADATASUBS = "777",
+	RPL_METADATASUBS = "772",
 	/// <Key>
-	ERR_METADATATOOMANYSUBS = "778",
+	ERR_METADATATOOMANYSUBS = "773",
+	///	<Target> [<RetryAfter>]
+	ERR_METADATASYNCLATER = "774",
+	///	<Target> <Key> [<RetryAfter>]
+	ERR_METADATARATELIMIT = "775",
 	//SASL: http://ircv3.net/specs/extensions/sasl-3.1.html
 	///
 	RPL_LOGGEDIN = "900",
