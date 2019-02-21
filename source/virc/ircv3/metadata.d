@@ -1,1 +1,0 @@
-module virc.ircv3.metadata;
