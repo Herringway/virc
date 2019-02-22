@@ -709,6 +709,24 @@ struct IRCClient(alias mix, T) if (isOutputRange!(T, char)) {
 	public void listSubscribedMetadata() {
 		write!"METADATA * SUBS"();
 	}
+	public void syncMetadata(const User user) {
+		write!"METADATA %s SYNC"(user);
+	}
+	public void syncMetadata(const Channel channel) {
+		write!"METADATA %s SYNC"(channel);
+	}
+	public void syncMetadata() {
+		write!"METADATA * SYNC"();
+	}
+	public void clearMetadata(const User user) {
+		write!"METADATA %s CLEAR"(user);
+	}
+	public void clearMetadata(const Channel channel) {
+		write!"METADATA %s CLEAR"(channel);
+	}
+	public void clearMetadata() {
+		write!"METADATA * CLEAR"();
+	}
 	private void sendAuthenticatePayload(const string payload) {
 		import std.base64 : Base64;
 		import std.range : chunks;
@@ -3102,5 +3120,20 @@ version(unittest) {
 		client.put(":irc.example.com 762 modernclient :end of metadata");
 		assert(errors.length == 10);
 		assert(errors[9].type == ErrorType.noPrivs);
+
+		client.syncMetadata();
+		assert(client.output.data.lineSplitter().array[$-1] == "METADATA * SYNC");
+		client.clearMetadata();
+		assert(client.output.data.lineSplitter().array[$-1] == "METADATA * CLEAR");
+
+		client.syncMetadata(Channel("#test"));
+		assert(client.output.data.lineSplitter().array[$-1] == "METADATA #test SYNC");
+		client.clearMetadata(Channel("#test"));
+		assert(client.output.data.lineSplitter().array[$-1] == "METADATA #test CLEAR");
+
+		client.syncMetadata(User("test"));
+		assert(client.output.data.lineSplitter().array[$-1] == "METADATA test SYNC");
+		client.clearMetadata(User("test"));
+		assert(client.output.data.lineSplitter().array[$-1] == "METADATA test CLEAR");
 	}
 }
