@@ -289,9 +289,13 @@ auto parseNumeric(Numeric numeric : Numeric.RPL_TOPIC, T)(T input) {
 struct NamesReply {
 	import std.algorithm : splitter;
 	import std.traits : ReturnType;
+	import std.typecons : No;
 	NamReplyFlag chanFlag;
 	string channel;
-	ReturnType!(splitter!("a == b", string, string)) users;
+	string _users;
+	auto users() inout {
+		return _users.splitter(" ");
+	}
 }
 /++
 +
@@ -375,7 +379,7 @@ auto parseNumeric(Numeric numeric : Numeric.RPL_NAMREPLY, T)(T input) {
 		output.nullify();
 		return output;
 	}
-	output.get.users = input.front.splitter(" ");
+	output.get._users = input.front;
 	return output;
 }
 ///
