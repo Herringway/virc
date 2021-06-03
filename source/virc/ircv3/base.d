@@ -62,7 +62,7 @@ struct Capability {
 	this(string str) @safe pure @nogc in {
 		import std.range : empty;
 		assert(!str.empty);
-	} body {
+	} do {
 		import std.algorithm.comparison : among;
 		import std.algorithm.searching : findSplit;
 		import std.range : front, popFront;

@@ -52,7 +52,7 @@ class SASLPlain : SASLMechanism {
 		assert(authorizationIdentity != "");
 		assert(authorizationIdentity.filter!(x => x == '\0').empty);
 		assert(password.filter!(x => x == '\0').empty);
-	} body {
+	} do {
 		authStr = authorizationIdentity~"\0"~authenticationIdentity~"\0"~password;
 	}
 }

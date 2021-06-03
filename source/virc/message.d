@@ -61,16 +61,16 @@ struct Message {
 		return type != MessageType.notice;
 	}
 	///The CTCP command, if this is a CTCP message.
-	auto ctcpCommand() const in {
-		assert(isCTCP, "This is not a CTCP message!");
-	} body {
+	auto ctcpCommand() const
+		in(isCTCP, "This is not a CTCP message!")
+	{
 		auto split = msg[1..$-1].splitter(" ");
 		return split.front;
 	}
 	///The arguments after the CTCP command, if this is a CTCP message.
-	auto ctcpArgs() const in {
-		assert(isCTCP, "This is not a CTCP message!");
-	} body {
+	auto ctcpArgs() const
+		in(isCTCP, "This is not a CTCP message!")
+	{
 		auto split = msg[1..$-1].findSplit(" ");
 		return split[2];
 	}
