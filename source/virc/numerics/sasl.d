@@ -131,18 +131,15 @@ void parseNumeric(Numeric numeric, T)(T) if (numeric.among(Numeric.ERR_NICKLOCKE
 +/
 auto parseNumeric(Numeric numeric : Numeric.RPL_SASLMECHS, T)(T input) {
 	import std.algorithm : splitter;
-	import std.traits : ReturnType;
-	import std.typecons : Nullable;
-	Nullable!(ReturnType!(splitter!("a == b", typeof(T.front), string))) mechanisms;
-	if (input.empty) {
-		return mechanisms.init;
+	import std.typecons : nullable;
+	if (!input.empty) {
+		input.popFront();
 	}
-	input.popFront();
-	if (input.empty) {
-		return mechanisms.init;
+	if (!input.empty) {
+		return nullable(input.front.splitter(","));
+	} else {
+		return typeof(return).init;
 	}
-	mechanisms = input.front.splitter(",");
-	return mechanisms;
 }
 ///
 @safe pure nothrow @nogc unittest { //Numeric.RPL_SASLMECHS
