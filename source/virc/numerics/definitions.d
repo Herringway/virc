@@ -358,7 +358,7 @@ enum Numeric {
 	ERR_TARGETINVALID = "765",
 	///	<Target> <Key> :no matching key
 	ERR_NOMATCHINGKEY = "766",
-	///	<Key> :invalid metadata key
+	///	<InvalidKey>
 	ERR_KEYINVALID = "767",
 	///	<Target> <Key> :key not set
 	ERR_KEYNOTSET = "768",
@@ -374,7 +374,7 @@ enum Numeric {
 	ERR_METADATATOOMANYSUBS = "773",
 	///	<Target> [<RetryAfter>]
 	ERR_METADATASYNCLATER = "774",
-	///	<Target> <Key> [<RetryAfter>]
+	///	<Target> <Key> <RetryAfter> :<Value>
 	ERR_METADATARATELIMIT = "775",
 	//SASL: http://ircv3.net/specs/extensions/sasl-3.1.html
 	///
