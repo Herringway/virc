@@ -16,7 +16,7 @@ auto parseNumeric(Numeric numeric : Numeric.RPL_MONONLINE, T)(T input) {
 	import virc.usermask : UserMask;
 	input.popFront();
 	auto split = input.front.splitter(",");
-	return split.map!(x => { User user; user.mask = UserMask(x); return user; }());
+	return split.map!((x) { User user; user.mask = UserMask(x); return user; });
 }
 ///
 @safe pure nothrow @nogc unittest { //Numeric.RPL_MONONLINE
@@ -49,7 +49,7 @@ auto parseNumeric(Numeric numeric, T)(T input) if (numeric.among(Numeric.RPL_MON
 	import virc.common : User;
 	input.popFront();
 	auto split = input.front.splitter(",");
-	return split.map!(x => { User user; user.mask.nickname = x; return user; }());
+	return split.map!((x) { User user; user.mask.nickname = x; return user; });
 }
 ///
 @safe pure nothrow @nogc unittest { //Numeric.RPL_MONOFFLINE
