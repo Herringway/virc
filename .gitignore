@@ -12,3 +12,4 @@ dub.selections.json
 docs
 settings.json
 packageVersion.d
+*.pdb
