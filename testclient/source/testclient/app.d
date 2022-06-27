@@ -130,16 +130,24 @@ auto runClient(T)(JSONValue settings, ref T stream) {
 		client.autoJoinChannel(channel.str);
 	}
 
-	void readIRC() {
-		while(!stream.empty) {
-			put(client, stream.readLine().idup);
+	void readIRC() nothrow {
+		try {
+			while(!stream.empty) {
+				put(client, stream.readLine().idup);
+			}
+		} catch (Exception e) {
+			assert(0, e.msg);
 		}
 	}
-	void readCLI() {
-		auto standardInput = new StdinStream;
-		while (true) {
-			auto str = cast(string)readLine(standardInput);
-			client.writeLine(str);
+	void readCLI() nothrow {
+		try {
+			auto standardInput = new StdinStream;
+			while (true) {
+				auto str = cast(string)readLine(standardInput);
+				client.writeLine(str);
+			}
+		} catch (Exception e) {
+			assert(0, e.msg);
 		}
 	}
 	runTask(&readIRC);
@@ -149,12 +157,12 @@ auto runClient(T)(JSONValue settings, ref T stream) {
 
 int main() {
 	import std.file : exists, readText;
-	import std.json : JSON_TYPE, parseJSON;
+	import std.json : JSONType, parseJSON;
 	if (exists("settings.json")) {
 		auto settings = readText("settings.json").parseJSON();
 		auto conn = connectTCP(settings["address"].str, cast(ushort)settings["port"].integer);
 		Stream stream;
-		if (settings["ssl"].type == JSON_TYPE.TRUE) {
+		if (settings["ssl"].type == JSONType.true_) {
 			auto sslctx = createTLSContext(TLSContextKind.client);
 			sslctx.peerValidationMode = TLSPeerValidationMode.none;
 			try {
