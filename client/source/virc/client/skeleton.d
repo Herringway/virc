@@ -58,7 +58,7 @@ enum supportedCaps = AliasSeq!(
 	"echo-message", // http://ircv3.net/specs/extensions/echo-message-3.2.html
 	"extended-join", // http://ircv3.net/specs/extensions/extended-join-3.1.html
 	"invite-notify", // http://ircv3.net/specs/extensions/invite-notify-3.2.html
-	"metadata", // http://ircv3.net/specs/core/metadata-3.2.html
+	"draft/metadata-2", //
 	//"monitor", // http://ircv3.net/specs/core/monitor-3.2.html
 	"multi-prefix", // http://ircv3.net/specs/extensions/multi-prefix-3.1.html
 	"sasl", // http://ircv3.net/specs/extensions/sasl-3.1.html and http://ircv3.net/specs/extensions/sasl-3.2.html
@@ -190,7 +190,6 @@ alias ClientNoOpCommands = AliasSeq!(
 	Numeric.RPL_ENDOFMONLIST,
 	Numeric.RPL_METADATASUBOK,
 	Numeric.RPL_METADATAUNSUBOK,
-	Numeric.RPL_METADATAEND,
 	Numeric.RPL_LOCALUSERS,
 	Numeric.RPL_GLOBALUSERS,
 	Numeric.RPL_YOURHOST,
@@ -251,11 +250,9 @@ enum ErrorType {
 	///Bad input from client.
 	badUserInput,
 	///No key matched
-	noMatchingKey,
+	keyNotSet,
 	///Action could not be performed now, try again later
 	waitAndRetry,
-	///Can't set any more metadata
-	metadataLimitReached,
 	///Too many metadata subscriptions
 	tooManySubs
 }
@@ -516,7 +513,7 @@ struct IRCClient(alias mix, T) if (isOutputRange!(T, char)) {
 				switchy: switch (parsed.verb) {
 					//TOO MANY TEMPLATE INSTANTIATIONS! uncomment when compiler fixes this!
 					//alias Numerics = NoDuplicates!(EnumMembers!Numeric);
-					alias Numerics = AliasSeq!(Numeric.RPL_WELCOME, Numeric.RPL_ISUPPORT, Numeric.RPL_LIST, Numeric.RPL_YOURHOST, Numeric.RPL_CREATED, Numeric.RPL_LISTSTART, Numeric.RPL_LISTEND, Numeric.RPL_ENDOFMONLIST, Numeric.RPL_ENDOFNAMES, Numeric.RPL_YOURID, Numeric.RPL_LOCALUSERS, Numeric.RPL_GLOBALUSERS, Numeric.RPL_HOSTHIDDEN, Numeric.RPL_TEXT, Numeric.RPL_MYINFO, Numeric.RPL_LOGON, Numeric.RPL_MONONLINE, Numeric.RPL_MONOFFLINE, Numeric.RPL_MONLIST, Numeric.RPL_LUSERCLIENT, Numeric.RPL_LUSEROP, Numeric.RPL_LUSERCHANNELS, Numeric.RPL_LUSERME, Numeric.RPL_TOPIC, Numeric.RPL_NAMREPLY, Numeric.RPL_TOPICWHOTIME, Numeric.RPL_SASLSUCCESS, Numeric.RPL_LOGGEDIN, Numeric.RPL_VERSION, Numeric.ERR_MONLISTFULL, Numeric.ERR_NOMOTD, Numeric.ERR_NICKLOCKED, Numeric.ERR_SASLFAIL, Numeric.ERR_SASLTOOLONG, Numeric.ERR_SASLABORTED, Numeric.RPL_REHASHING, Numeric.ERR_NOPRIVS, Numeric.RPL_YOUREOPER, Numeric.ERR_NOSUCHSERVER, Numeric.ERR_NOPRIVILEGES, Numeric.RPL_AWAY, Numeric.RPL_UNAWAY, Numeric.RPL_NOWAWAY, Numeric.RPL_ENDOFWHOIS, Numeric.RPL_WHOISUSER, Numeric.RPL_WHOISSECURE, Numeric.RPL_WHOISOPERATOR, Numeric.RPL_WHOISREGNICK, Numeric.RPL_WHOISIDLE, Numeric.RPL_WHOISSERVER, Numeric.RPL_WHOISACCOUNT, Numeric.RPL_ADMINEMAIL, Numeric.RPL_ADMINLOC1, Numeric.RPL_ADMINLOC2, Numeric.RPL_ADMINME, Numeric.RPL_WHOISHOST, Numeric.RPL_WHOISMODE, Numeric.RPL_WHOISCERTFP, Numeric.RPL_WHOISCHANNELS, Numeric.RPL_ISON, Numeric.RPL_WHOISKEYVALUE, Numeric.RPL_KEYVALUE, Numeric.ERR_KEYNOPERMISSION, Numeric.ERR_NOMATCHINGKEY, Numeric.RPL_METADATAEND, Numeric.ERR_METADATALIMIT, Numeric.ERR_KEYINVALID, Numeric.ERR_METADATASYNCLATER, Numeric.RPL_METADATASUBOK, Numeric.RPL_METADATAUNSUBOK, Numeric.ERR_METADATATOOMANYSUBS, Numeric.RPL_METADATASUBS, Numeric.ERR_METADATARATELIMIT);
+					alias Numerics = AliasSeq!(Numeric.RPL_WELCOME, Numeric.RPL_ISUPPORT, Numeric.RPL_LIST, Numeric.RPL_YOURHOST, Numeric.RPL_CREATED, Numeric.RPL_LISTSTART, Numeric.RPL_LISTEND, Numeric.RPL_ENDOFMONLIST, Numeric.RPL_ENDOFNAMES, Numeric.RPL_YOURID, Numeric.RPL_LOCALUSERS, Numeric.RPL_GLOBALUSERS, Numeric.RPL_HOSTHIDDEN, Numeric.RPL_TEXT, Numeric.RPL_MYINFO, Numeric.RPL_LOGON, Numeric.RPL_MONONLINE, Numeric.RPL_MONOFFLINE, Numeric.RPL_MONLIST, Numeric.RPL_LUSERCLIENT, Numeric.RPL_LUSEROP, Numeric.RPL_LUSERCHANNELS, Numeric.RPL_LUSERME, Numeric.RPL_TOPIC, Numeric.RPL_NAMREPLY, Numeric.RPL_TOPICWHOTIME, Numeric.RPL_SASLSUCCESS, Numeric.RPL_LOGGEDIN, Numeric.RPL_VERSION, Numeric.ERR_MONLISTFULL, Numeric.ERR_NOMOTD, Numeric.ERR_NICKLOCKED, Numeric.ERR_SASLFAIL, Numeric.ERR_SASLTOOLONG, Numeric.ERR_SASLABORTED, Numeric.RPL_REHASHING, Numeric.ERR_NOPRIVS, Numeric.RPL_YOUREOPER, Numeric.ERR_NOSUCHSERVER, Numeric.ERR_NOPRIVILEGES, Numeric.RPL_AWAY, Numeric.RPL_UNAWAY, Numeric.RPL_NOWAWAY, Numeric.RPL_ENDOFWHOIS, Numeric.RPL_WHOISUSER, Numeric.RPL_WHOISSECURE, Numeric.RPL_WHOISOPERATOR, Numeric.RPL_WHOISREGNICK, Numeric.RPL_WHOISIDLE, Numeric.RPL_WHOISSERVER, Numeric.RPL_WHOISACCOUNT, Numeric.RPL_ADMINEMAIL, Numeric.RPL_ADMINLOC1, Numeric.RPL_ADMINLOC2, Numeric.RPL_ADMINME, Numeric.RPL_WHOISHOST, Numeric.RPL_WHOISMODE, Numeric.RPL_WHOISCERTFP, Numeric.RPL_WHOISCHANNELS, Numeric.RPL_ISON, Numeric.RPL_WHOISKEYVALUE, Numeric.RPL_KEYVALUE, Numeric.RPL_KEYNOTSET, Numeric.ERR_METADATASYNCLATER, Numeric.RPL_METADATASUBOK, Numeric.RPL_METADATAUNSUBOK, Numeric.RPL_METADATASUBS);
 
 					static foreach (cmd; AliasSeq!(NoDuplicates!(EnumMembers!IRCV3Commands), NoDuplicates!(EnumMembers!RFC1459Commands), NoDuplicates!(EnumMembers!RFC2812Commands), Numerics)) {
 						case cmd:
@@ -1456,41 +1453,14 @@ struct IRCClient(alias mix, T) if (isOutputRange!(T, char)) {
 			tryCall!"onError"(IRCError(ErrorType.malformed), metadata);
 		}
 	}
-	private void rec(string cmd : Numeric.ERR_KEYNOPERMISSION)(IRCMessage message, const MessageMetadata metadata) {
+	private void rec(string cmd : Numeric.RPL_KEYNOTSET)(IRCMessage message, const MessageMetadata metadata) {
 		auto split = message.args;
 		string prefixes;
 		foreach (k,v; server.iSupport.prefixes) {
 			prefixes ~= v;
 		}
-		auto err = parseNumeric!(Numeric.ERR_KEYNOPERMISSION)(split, prefixes, server.iSupport.channelTypes);
-		tryCall!"onError"(IRCError(ErrorType.noPrivs, err.get.humanReadable), metadata);
-	}
-	private void rec(string cmd : Numeric.ERR_NOMATCHINGKEY)(IRCMessage message, const MessageMetadata metadata) {
-		auto split = message.args;
-		string prefixes;
-		foreach (k,v; server.iSupport.prefixes) {
-			prefixes ~= v;
-		}
-		auto err = parseNumeric!(Numeric.ERR_NOMATCHINGKEY)(split, prefixes, server.iSupport.channelTypes);
-		tryCall!"onError"(IRCError(ErrorType.noMatchingKey, err.get.humanReadable), metadata);
-	}
-	private void rec(string cmd : Numeric.ERR_METADATALIMIT)(IRCMessage message, const MessageMetadata metadata) {
-		auto split = message.args;
-		string prefixes;
-		foreach (k,v; server.iSupport.prefixes) {
-			prefixes ~= v;
-		}
-		auto err = parseNumeric!(Numeric.ERR_METADATALIMIT)(split, prefixes, server.iSupport.channelTypes);
-		tryCall!"onError"(IRCError(ErrorType.metadataLimitReached, err.get.humanReadable), metadata);
-	}
-	private void rec(string cmd : Numeric.ERR_KEYINVALID)(IRCMessage message, const MessageMetadata metadata) {
-		auto split = message.args;
-		string prefixes;
-		foreach (k,v; server.iSupport.prefixes) {
-			prefixes ~= v;
-		}
-		auto err = parseNumeric!(Numeric.ERR_KEYINVALID)(split, prefixes, server.iSupport.channelTypes);
-		tryCall!"onError"(IRCError(ErrorType.badUserInput, err.get.humanReadable), metadata);
+		auto err = parseNumeric!(Numeric.RPL_KEYNOTSET)(split, prefixes, server.iSupport.channelTypes);
+		tryCall!"onError"(IRCError(ErrorType.keyNotSet, err.get.humanReadable), metadata);
 	}
 	private void rec(string cmd : Numeric.ERR_METADATASYNCLATER)(IRCMessage message, const MessageMetadata metadata) {
 		auto split = message.args;
@@ -1500,17 +1470,6 @@ struct IRCClient(alias mix, T) if (isOutputRange!(T, char)) {
 		}
 		auto err = parseNumeric!(Numeric.ERR_METADATASYNCLATER)(split, prefixes, server.iSupport.channelTypes);
 		tryCall!"onError"(IRCError(ErrorType.waitAndRetry), metadata);
-	}
-	private void rec(string cmd : Numeric.ERR_METADATARATELIMIT)(IRCMessage message, const MessageMetadata metadata) {
-		string prefixes;
-		foreach (k,v; server.iSupport.prefixes) {
-			prefixes ~= v;
-		}
-		//auto err = parseNumeric!(Numeric.ERR_METADATARATELIMIT)(split, prefixes, server.iSupport.channelTypes);
-		tryCall!"onError"(IRCError(ErrorType.waitAndRetry), metadata);
-	}
-	private void rec(string cmd : Numeric.ERR_METADATATOOMANYSUBS)(IRCMessage message, const MessageMetadata metadata) {
-		tryCall!"onError"(IRCError(ErrorType.tooManySubs), metadata);
 	}
 	private void rec(string cmd : Numeric.RPL_WHOISCHANNELS)(IRCMessage message, const MessageMetadata metadata) {
 		string prefixes;
@@ -2981,159 +2940,5 @@ version(unittest) {
 		client.put(":irc.example.com 318 Someone user1 :End of /WHOIS list");
 		assert(client.userMetadata[User("user1")]["something"] == "some data");
 
-		client.setMetadata("url", "http://www.example.com");
-		client.put(":irc.example.com 761 * url * :http://www.example.com");
-		client.put(":irc.example.com 762 :end of metadata");
-		assert(client.output.data.lineSplitter().array[$-1] == "METADATA * SET url :http://www.example.com");
-
-		assert("url" in client.ownMetadata);
-		assert(client.ownMetadata["url"] == "http://www.example.com");
-
-		client.setMetadata(Channel("#example"), "url", "http://www.example.com");
-		client.put(":irc.example.com 761 #example url * :http://www.example.com");
-		client.put(":irc.example.com 762 :end of metadata");
-		assert(client.output.data.lineSplitter().array[$-1] == "METADATA #example SET url :http://www.example.com");
-
-		assert(client.channelMetadata[Channel("#example")]["url"] == "http://www.example.com");
-
-		client.setMetadata(User("user1"), "url", "http://www.example.com");
-		client.put(":irc.example.com 769 user1 url :permission denied");
-		assert(client.output.data.lineSplitter().array[$-1] == "METADATA user1 SET url :http://www.example.com");
-
-		assert(errors[0].type == ErrorType.noPrivs);
-
-		client.setMetadata("url", "http://www.example.com");
-		client.put(":irc.example.com 764 * :metadata limit reached");
-
-		assert(errors[1].type == ErrorType.metadataLimitReached);
-
-		client.setMetadata("$url$", "http://www.example.com");
-		client.put(":irc.example.com 767 $url$ :invalid metadata key");
-
-		assert(errors[2].type == ErrorType.badUserInput);
-
-		client.listMetadata(User("user1"));
-		assert(client.output.data.lineSplitter().array[$-1] == "METADATA user1 LIST");
-		client.put(":irc.example.com 761 user1 url * :http://www.example.com");
-		client.put(":irc.example.com 761 user1 im.xmpp * :user1@xmpp.example.com");
-		client.put(":irc.example.com 761 user1 bot-likeliness-score visible-only-for-admin :42");
-		client.put(":irc.example.com 762 :end of metadata");
-
-		assert("url" in client.userMetadata[User("user1")]);
-		assert("im.xmpp" in client.userMetadata[User("user1")]);
-		assert("bot-likeliness-score" in client.userMetadata[User("user1")]);
-
-		assert(client.userMetadata[User("user1")]["url"] == "http://www.example.com");
-		assert(client.userMetadata[User("user1")]["im.xmpp"] == "user1@xmpp.example.com");
-		assert(client.userMetadata[User("user1")]["bot-likeliness-score"] == "42");
-		assert(client.userMetadata[User("user1")]["bot-likeliness-score"].visibility == "visible-only-for-admin");
-
-		client.getMetadata(User("user1"), "blargh", "splot", "im.xmpp");
-		client.put(":irc.example.com 766 user1 blargh :no matching key");
-		client.put(":irc.example.com 766 user1 splot :no matching key");
-		client.put(":irc.example.com 761 user1 im.xmpp * :user1@xmpp.example.com");
-		assert(client.output.data.lineSplitter().array[$-1] == "METADATA user1 GET blargh splot im.xmpp");
-
-
-		assert(errors[3].type == ErrorType.noMatchingKey);
-		assert(errors[4].type == ErrorType.noMatchingKey);
-
-		assert("blargh" !in client.userMetadata[User("user1")]);
-		assert("splot" !in client.userMetadata[User("user1")]);
-		assert("im.xmpp" in client.userMetadata[User("user1")]);
-		assert(client.userMetadata[User("user1")]["im.xmpp"] == "user1@xmpp.example.com");
-
-		client.put(":user1!~user@somewhere.example.com METADATA #example url * :http://www.example.com");
-		assert(client.channelMetadata[Channel("#example")]["url"] == "http://www.example.com");
-
-		client.put(":irc.example.com METADATA #example url * :http://wiki.example.com");
-		assert(client.channelMetadata[Channel("#example")]["url"] == "http://wiki.example.com");
-
-		client.put(":irc.example.com METADATA user1 account * :user1");
-		assert(client.userMetadata[User("user1")]["account"] == "user1");
-
-		client.put(":irc.example.com 774 modernclient #bigchan 4");
-		assert(errors.length == 6);
-		assert(errors[5].type == ErrorType.waitAndRetry);
-
-		client.subscribeMetadata("avatar", "website", "foo", "bar");
-		assert(client.output.data.lineSplitter().array[$-1] == "METADATA * SUB avatar website foo bar");
-		client.put(":irc.example.com 770 modernclient :avatar website foo bar");
-		client.put(":irc.example.com 762 modernclient :end of metadata");
-
-		client.unsubscribeMetadata("foo", "bar");
-		assert(client.output.data.lineSplitter().array[$-1] == "METADATA * UNSUB foo bar");
-		client.put(":irc.example.com 771 modernclient :bar foo");
-		client.put(":irc.example.com 762 modernclient :end of metadata");
-
-
-		client.subscribeMetadata("avatar", "website", "foo", "bar", "baz");
-		client.put(":irc.example.com 770 modernclient :avatar website");
-		client.put(":irc.example.com 770 modernclient :foo");
-		client.put(":irc.example.com 770 modernclient :bar baz");
-		client.put(":irc.example.com 762 modernclient :end of metadata");
-
-		client.subscribeMetadata("foo", "$url", "bar");
-		client.put(":irc.example.com 770 modernclient :foo bar");
-		client.put(":irc.example.com 767 modernclient $url :invalid metadata key");
-		client.put(":irc.example.com 762 modernclient :end of metadata");
-		assert(errors[6].type == ErrorType.badUserInput);
-
-		client.subscribeMetadata("email", "city");
-		client.put(":irc.example.com 773 modernclient email");
-		client.put(":irc.example.com 762 modernclient :end of metadata");
-		assert(errors.length == 8);
-		assert(errors[7].type == ErrorType.tooManySubs);
-
-		client.subscribeMetadata("website", "avatar", "foo");
-		client.put(":irc.example.com 770 modernclient :website avatar foo");
-		client.put(":irc.example.com 762 modernclient :end of metadata");
-
-		client.subscribeMetadata("email", "city", "country", "bar", "baz");
-		client.put(":irc.example.com 773 modernclient country");
-		client.put(":irc.example.com 770 modernclient :email city");
-		client.put(":irc.example.com 762 modernclient :end of metadata");
-		assert(errors[8].type == ErrorType.tooManySubs);
-		assert(errors.length == 9);
-
-		client.listSubscribedMetadata();
-		client.put(":irc.example.com 772 modernclient :website avatar city foo email");
-		client.put(":irc.example.com 762 modernclient :end of metadata");
-		assert(subs == ["website", "avatar", "city", "foo", "email"]);
-
-		subs = [];
-		client.listSubscribedMetadata();
-		client.put(":irc.example.com 772 modernclient :avatar");
-		client.put(":irc.example.com 772 modernclient :bar baz");
-		client.put(":irc.example.com 772 modernclient :foo website");
-		client.put(":irc.example.com 762 modernclient :end of metadata");
-		assert(subs == ["avatar", "bar", "baz", "foo", "website"]);
-
-		subs = [];
-		client.listSubscribedMetadata();
-		client.put(":irc.example.com 762 modernclient :end of metadata");
-		assert(subs == []);
-
-		client.subscribeMetadata("avatar", "secretkey", "website");
-		client.put(":irc.example.com 769 modernclient modernclient secretkey :permission denied");
-		client.put(":irc.example.com 770 modernclient :secretkey website");
-		client.put(":irc.example.com 762 modernclient :end of metadata");
-		assert(errors.length == 10);
-		assert(errors[9].type == ErrorType.noPrivs);
-
-		client.syncMetadata();
-		assert(client.output.data.lineSplitter().array[$-1] == "METADATA * SYNC");
-		client.clearMetadata();
-		assert(client.output.data.lineSplitter().array[$-1] == "METADATA * CLEAR");
-
-		client.syncMetadata(Channel("#test"));
-		assert(client.output.data.lineSplitter().array[$-1] == "METADATA #test SYNC");
-		client.clearMetadata(Channel("#test"));
-		assert(client.output.data.lineSplitter().array[$-1] == "METADATA #test CLEAR");
-
-		client.syncMetadata(User("test"));
-		assert(client.output.data.lineSplitter().array[$-1] == "METADATA test SYNC");
-		client.clearMetadata(User("test"));
-		assert(client.output.data.lineSplitter().array[$-1] == "METADATA test CLEAR");
 	}
 }

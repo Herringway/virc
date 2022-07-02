@@ -116,56 +116,7 @@ auto parseNumeric(Numeric numeric : Numeric.RPL_KEYVALUE, T)(T input, string pre
 	}
 }
 
-// Nothing to parse for 762, 763 doesn't exist
-
-
-struct ERR_MetadataLimit {
-	import virc.target : Target;
-	Target target;
-	string humanReadable;
-}
-/++
-+
-+ Format is `764 <Target> :metadata limit reached` OR
-+ `765 <Target> :invalid metadata target`
-+/
-auto parseNumeric(Numeric numeric, T)(T input, string prefixes, string channelTypes) if ((numeric == Numeric.ERR_METADATALIMIT) || (numeric == Numeric.ERR_TARGETINVALID)) {
-	import std.typecons : Nullable;
-	import virc.numerics.magicparser : autoParse;
-	import virc.target : Target;
-	struct Reduced {
-		string target;
-		string errorMessage;
-	}
-	Nullable!ERR_MetadataLimit output;
-	auto reply = autoParse!Reduced(input);
-	if (!reply.isNull) {
-		output = ERR_MetadataLimit(Target(reply.get.target, prefixes, channelTypes), reply.get.errorMessage);
-	}
-	return output;
-}
-///
-@safe pure nothrow unittest { //Numeric.ERR_METADATALIMIT & Numeric.ERR_TARGETINVALID
-	import std.range : only, takeNone;
-	import virc.common : User;
-
-	with(parseNumeric!(Numeric.ERR_METADATALIMIT)(only("someone!test@example.com", "metadata limit reached"), "@", "#").get) {
-		assert(target== User("someone!test@example.com"));
-		assert(humanReadable == "metadata limit reached");
-	}
-
-	with(parseNumeric!(Numeric.ERR_TARGETINVALID)(only("someone!test@example.com", "invalid metadata target"), "@", "#").get) {
-		assert(target== User("someone!test@example.com"));
-		assert(humanReadable == "invalid metadata target");
-	}
-
-	assert(parseNumeric!(Numeric.ERR_METADATALIMIT)(takeNone(only("")), "@", "#").isNull);
-	assert(parseNumeric!(Numeric.ERR_TARGETINVALID)(takeNone(only("")), "@", "#").isNull);
-	assert(parseNumeric!(Numeric.ERR_METADATALIMIT)(only("someone!test@example.com"), "@", "#").isNull);
-	assert(parseNumeric!(Numeric.ERR_TARGETINVALID)(only("someone!test@example.com"), "@", "#").isNull);
-}
-
-struct ERR_NoMatchingKey {
+struct RPL_KeyNotSet {
 	import virc.target : Target;
 	Target target;
 	string key;
@@ -175,7 +126,7 @@ struct ERR_NoMatchingKey {
 +
 + Format is `766 <Target> <Key> :no matching key`
 +/
-auto parseNumeric(Numeric numeric : Numeric.ERR_NOMATCHINGKEY, T)(T input, string prefixes, string channelTypes) {
+auto parseNumeric(Numeric numeric : Numeric.RPL_KEYNOTSET, T)(T input, string prefixes, string channelTypes) {
 	import std.typecons : Nullable;
 	import virc.numerics.magicparser : autoParse;
 	import virc.target : Target;
@@ -184,10 +135,10 @@ auto parseNumeric(Numeric numeric : Numeric.ERR_NOMATCHINGKEY, T)(T input, strin
 		string key;
 		string errorMessage;
 	}
-	Nullable!ERR_NoMatchingKey output;
+	Nullable!RPL_KeyNotSet output;
 	auto reply = autoParse!Reduced(input);
 	if (!reply.isNull) {
-		output = ERR_NoMatchingKey(Target(reply.get.target, prefixes, channelTypes), reply.get.key, reply.get.errorMessage);
+		output = RPL_KeyNotSet(Target(reply.get.target, prefixes, channelTypes), reply.get.key, reply.get.errorMessage);
 	}
 	return output;
 }
@@ -205,95 +156,6 @@ auto parseNumeric(Numeric numeric : Numeric.ERR_NOMATCHINGKEY, T)(T input, strin
 	assert(parseNumeric!(Numeric.ERR_NOMATCHINGKEY)(takeNone(only("")), "@", "#").isNull);
 	assert(parseNumeric!(Numeric.ERR_NOMATCHINGKEY)(only("someone!test@example.com"), "@", "#").isNull);
 	assert(parseNumeric!(Numeric.ERR_NOMATCHINGKEY)(only("someone!test@example.com", "examplekey"), "@", "#").isNull);
-}
-struct ERR_KeyInvalid {
-	string key;
-}
-/++
-+
-+ Format is `767 :<InvalidKey>`
-+/
-auto parseNumeric(Numeric numeric : Numeric.ERR_KEYINVALID, T)(T input, string prefixes, string channelTypes) {
-	import virc.numerics.magicparser : autoParse;
-	return autoParse!ERR_KeyInvalid(input);
-}
-///
-@safe pure nothrow unittest { //Numeric.ERR_KEYINVALID
-	import std.range : only, takeNone;
-	import virc.common : User;
-
-	with(parseNumeric!(Numeric.ERR_KEYINVALID)(only(":invalidkey"), "@", "#").get) {
-		assert(key == ":invalidkey");
-	}
-
-	assert(parseNumeric!(Numeric.ERR_KEYINVALID)(takeNone(only("")), "@", "#").isNull);
-}
-struct ERR_KeyNotSet {
-	import virc.target : Target;
-	Target target;
-	string key;
-	string errorMessage;
-}
-/++
-+
-+ Format is `768 <Target> <Key> :key not set`
-+/
-auto parseNumeric(Numeric numeric : Numeric.ERR_KEYNOTSET, T)(T input, string prefixes, string channelTypes) {
-	import std.typecons : Nullable;
-	import virc.numerics.magicparser : autoParse;
-	import virc.target : Target;
-	struct Reduced {
-		string target;
-		string key;
-		string errorMessage;
-	}
-	Nullable!ERR_KeyNotSet output;
-	auto reply = autoParse!Reduced(input);
-	if (!reply.isNull) {
-		output = ERR_KeyNotSet(Target(reply.get.target, prefixes, channelTypes), reply.get.key, reply.get.errorMessage);
-	}
-	return output;
-}
-///
-@safe pure nothrow unittest { //Numeric.ERR_KEYNOTSET
-	import std.range : only, takeNone;
-	import virc.common : User;
-
-	with(parseNumeric!(Numeric.ERR_KEYNOTSET)(only("someone!test@example.com", "badkey", "key not set"), "@", "#").get) {
-		assert(target == User("someone!test@example.com"));
-		assert(key == "badkey");
-		assert(errorMessage == "key not set");
-	}
-
-	assert(parseNumeric!(Numeric.ERR_KEYNOTSET)(takeNone(only("")), "@", "#").isNull);
-	assert(parseNumeric!(Numeric.ERR_KEYNOTSET)(only("someone!test@example.com"), "@", "#").isNull);
-	assert(parseNumeric!(Numeric.ERR_KEYNOTSET)(only("someone!test@example.com", "badkey"), "@", "#").isNull);
-}
-struct ERR_KeyNoPermission {
-	import virc.target : Target;
-	Target target;
-	string key;
-	string humanReadable;
-}
-/++
-+
-+ Format is `769 <Target> <Key> :permission denied`
-+/
-auto parseNumeric(Numeric numeric : Numeric.ERR_KEYNOPERMISSION, T)(T input, string prefixes, string channelTypes) {
-	import std.typecons : Nullable;
-	import virc.numerics.magicparser : autoParse;
-	import virc.target : Target;
-	struct Reduced {
-		string target;
-		string key;
-		string errorMessage;
-	}
-	Nullable!ERR_KeyNoPermission output;
-	auto reply = autoParse!Reduced(input);
-	if (!reply.isNull) {
-		output = ERR_KeyNoPermission(Target(reply.get.target, prefixes, channelTypes), reply.get.key, reply.get.errorMessage);
-	}
-	return output;
 }
 
 /++
@@ -340,24 +202,6 @@ auto parseNumeric(Numeric numeric, T)(T input) if ((numeric == Numeric.RPL_METAD
 	assert(parseNumeric!(Numeric.RPL_METADATASUBS)(takeNone(only(""))).isNull);
 }
 
-/++
-+
-+ Format is `773 <Key>`
-+/
-auto parseNumeric(Numeric numeric : Numeric.ERR_KEYNOPERMISSION, T)(T input, string prefixes, string channelTypes) {
-	import std.typecons : Nullable;
-	import virc.numerics.magicparser : autoParse;
-	import virc.target : Target;
-	struct Reduced {
-		string key;
-	}
-	Nullable!ERR_KeyNoPermission output;
-	auto reply = autoParse!Reduced(input);
-	if (!reply.isNull) {
-		output = ERR_KeyNoPermission(reply.get.key);
-	}
-	return output;
-}
 struct ERR_MetadataSyncLater {
 	import core.time : Duration;
 	import std.typecons : Nullable;

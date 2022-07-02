@@ -350,32 +350,16 @@ enum Numeric {
 	RPL_WHOISKEYVALUE = "760",
 	///	<Target> <Key> <Visibility>[ :<Value>]
 	RPL_KEYVALUE = "761",
-	///	:end of metadata
-	RPL_METADATAEND = "762",
-	///	<Target> :metadata limit reached
-	ERR_METADATALIMIT = "764",
-	///	<Target> :invalid metadata target
-	ERR_TARGETINVALID = "765",
-	///	<Target> <Key> :no matching key
-	ERR_NOMATCHINGKEY = "766",
-	///	<InvalidKey>
-	ERR_KEYINVALID = "767",
 	///	<Target> <Key> :key not set
-	ERR_KEYNOTSET = "768",
-	///	<Target> <Key> :permission denied
-	ERR_KEYNOPERMISSION = "769",
+	RPL_KEYNOTSET = "766",
 	/// :<Key1> [<Key2> ...]
 	RPL_METADATASUBOK = "770",
 	/// :<Key1> [<Key2> ...]
 	RPL_METADATAUNSUBOK = "771",
 	/// :<Key1> [<Key2> ...]
 	RPL_METADATASUBS = "772",
-	/// <Key>
-	ERR_METADATATOOMANYSUBS = "773",
 	///	<Target> [<RetryAfter>]
 	ERR_METADATASYNCLATER = "774",
-	///	<Target> <Key> <RetryAfter> :<Value>
-	ERR_METADATARATELIMIT = "775",
 	//SASL: http://ircv3.net/specs/extensions/sasl-3.1.html
 	///
 	RPL_LOGGEDIN = "900",
