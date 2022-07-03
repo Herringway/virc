@@ -143,19 +143,19 @@ auto parseNumeric(Numeric numeric : Numeric.RPL_KEYNOTSET, T)(T input, string pr
 	return output;
 }
 ///
-@safe pure nothrow unittest { //Numeric.ERR_NOMATCHINGKEY
+@safe pure nothrow unittest { //Numeric.RPL_KEYNOTSET
 	import std.range : only, takeNone;
 	import virc.common : User;
 
-	with(parseNumeric!(Numeric.ERR_NOMATCHINGKEY)(only("someone!test@example.com", "examplekey", "no matching key"), "@", "#").get) {
+	with(parseNumeric!(Numeric.RPL_KEYNOTSET)(only("someone!test@example.com", "examplekey", "no matching key"), "@", "#").get) {
 		assert(target== User("someone!test@example.com"));
 		assert(key== "examplekey");
 		assert(humanReadable == "no matching key");
 	}
 
-	assert(parseNumeric!(Numeric.ERR_NOMATCHINGKEY)(takeNone(only("")), "@", "#").isNull);
-	assert(parseNumeric!(Numeric.ERR_NOMATCHINGKEY)(only("someone!test@example.com"), "@", "#").isNull);
-	assert(parseNumeric!(Numeric.ERR_NOMATCHINGKEY)(only("someone!test@example.com", "examplekey"), "@", "#").isNull);
+	assert(parseNumeric!(Numeric.RPL_KEYNOTSET)(takeNone(only("")), "@", "#").isNull);
+	assert(parseNumeric!(Numeric.RPL_KEYNOTSET)(only("someone!test@example.com"), "@", "#").isNull);
+	assert(parseNumeric!(Numeric.RPL_KEYNOTSET)(only("someone!test@example.com", "examplekey"), "@", "#").isNull);
 }
 
 /++
@@ -168,7 +168,8 @@ auto parseNumeric(Numeric numeric, T)(T input) if ((numeric == Numeric.RPL_METAD
 	import std.algorithm.iteration : splitter;
 	import std.typecons : Nullable, Tuple;
 	import virc.numerics.magicparser : autoParse;
-	struct Reduced {
+	static struct Reduced {
+		string target;
 		string subs;
 	}
 	Nullable!(Tuple!(typeof("".splitter(" ")), "subs")) output = Tuple!(typeof("".splitter(" ")), "subs")();
@@ -187,13 +188,13 @@ auto parseNumeric(Numeric numeric, T)(T input) if ((numeric == Numeric.RPL_METAD
 	import std.range : only, takeNone;
 	import virc.common : User;
 
-	with(parseNumeric!(Numeric.RPL_METADATASUBOK)(only("url example")).get) {
+	with(parseNumeric!(Numeric.RPL_METADATASUBOK)(only("client", "url example")).get) {
 		assert(subs.array == ["url", "example"]);
 	}
-	with(parseNumeric!(Numeric.RPL_METADATAUNSUBOK)(only("url example")).get) {
+	with(parseNumeric!(Numeric.RPL_METADATAUNSUBOK)(only("client", "url example")).get) {
 		assert(subs.array == ["url", "example"]);
 	}
-	with(parseNumeric!(Numeric.RPL_METADATASUBS)(only("url example")).get) {
+	with(parseNumeric!(Numeric.RPL_METADATASUBS)(only("client", "url example")).get) {
 		assert(subs.array == ["url", "example"]);
 	}
 

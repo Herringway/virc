@@ -14,7 +14,10 @@ enum IRCV3Commands {
 	starttls = "STARTTLS",
 	monitor = "MONITOR",
 	batch = "BATCH",
-	chghost = "CHGHOST"
+	chghost = "CHGHOST",
+	fail = "FAIL",
+	warn = "WARN",
+	note = "NOTE",
 }
 
 /++

@@ -188,8 +188,6 @@ alias ClientNoOpCommands = AliasSeq!(
 	Numeric.RPL_HOSTHIDDEN,
 	Numeric.RPL_ENDOFNAMES,
 	Numeric.RPL_ENDOFMONLIST,
-	Numeric.RPL_METADATASUBOK,
-	Numeric.RPL_METADATAUNSUBOK,
 	Numeric.RPL_LOCALUSERS,
 	Numeric.RPL_GLOBALUSERS,
 	Numeric.RPL_YOURHOST,
@@ -254,7 +252,9 @@ enum ErrorType {
 	///Action could not be performed now, try again later
 	waitAndRetry,
 	///Too many metadata subscriptions
-	tooManySubs
+	tooManySubs,
+	///Standard replies: FAIL
+	standardFail
 }
 /++
 + Struct holding data about non-fatal errors.
@@ -436,6 +436,10 @@ struct IRCClient(alias mix, T) if (isOutputRange!(T, char)) {
 	private bool autoSelectSASLMech;
 	private string receivedSASLAuthenticationText;
 	private bool _isAway;
+	private ulong maxMetadataSubscriptions;
+	private ulong maxMetadataSelfKeys;
+	private const(string)[] metadataSubscribedKeys;
+	private Capability[string] availableCapabilities;
 
 	private WhoisResponse[string] whoisCache;
 
@@ -724,6 +728,9 @@ struct IRCClient(alias mix, T) if (isOutputRange!(T, char)) {
 	public void clearMetadata() {
 		write!"METADATA * CLEAR"();
 	}
+	public bool isSubscribed(const string key) {
+		return metadataSubscribedKeys.canFind(key);
+	}
 	private void sendAuthenticatePayload(const string payload) {
 		import std.base64 : Base64;
 		import std.range : chunks;
@@ -845,17 +852,13 @@ struct IRCClient(alias mix, T) if (isOutputRange!(T, char)) {
 			write!"CAP REQ :%-(%s %)"(requestCaps);
 		}
 		foreach (ref cap; caps) {
-			if (cap == "sasl") {
-				supportedSASLMechs = cap.value.splitter(",").array;
-			}
+			availableCapabilities[cap.name] = cap;
 			tryCall!"onReceiveCapLS"(cap, metadata);
 		}
 	}
 	private void recCapList(T)(T caps, const MessageMetadata metadata) if (is(ElementType!T == Capability)) {
 		foreach (ref cap; caps) {
-			if (cap == "sasl") {
-				supportedSASLMechs = cap.value.splitter(",").array;
-			}
+			availableCapabilities[cap.name] = cap;
 			tryCall!"onReceiveCapList"(cap, metadata);
 		}
 	}
@@ -863,10 +866,8 @@ struct IRCClient(alias mix, T) if (isOutputRange!(T, char)) {
 		import std.range : hasLength;
 		capsEnabled ~= caps.save().array;
 		foreach (ref cap; caps) {
-			if (cap == "sasl") {
-				startSASL();
-			}
-			tryCall!"onReceiveCapAck"(cap, metadata);
+			enableCapability(cap);
+			tryCall!"onReceiveCapAck"(availableCapabilities[cap.name], metadata);
 			static if (!hasLength!T) {
 				capAcknowledgementCommon(1);
 			}
@@ -878,7 +879,7 @@ struct IRCClient(alias mix, T) if (isOutputRange!(T, char)) {
 	private void recCapNak(T)(T caps, const MessageMetadata metadata) if (is(ElementType!T == Capability)) {
 		import std.range : hasLength;
 		foreach (ref cap; caps) {
-			tryCall!"onReceiveCapNak"(cap, metadata);
+			tryCall!"onReceiveCapNak"(availableCapabilities[cap.name], metadata);
 			static if (!hasLength!T) {
 				capAcknowledgementCommon(1);
 			}
@@ -898,6 +899,7 @@ struct IRCClient(alias mix, T) if (isOutputRange!(T, char)) {
 			write!"CAP REQ :%-(%s %)"(requestCaps);
 		}
 		foreach (ref cap; caps) {
+			availableCapabilities[cap.name] = cap;
 			tryCall!"onReceiveCapNew"(cap, metadata);
 		}
 	}
@@ -905,11 +907,43 @@ struct IRCClient(alias mix, T) if (isOutputRange!(T, char)) {
 		import std.algorithm.mutation : remove;
 		import std.algorithm.searching : countUntil;
 		foreach (ref cap; caps) {
+			availableCapabilities.remove(cap.name);
 			auto findCap = countUntil(capsEnabled, cap);
 			if (findCap > -1) {
 				capsEnabled = capsEnabled.remove(findCap);
 			}
 			tryCall!"onReceiveCapDel"(cap, metadata);
+		}
+	}
+	private void enableCapability(const Capability cap) {
+		import virc.keyvaluesplitter : splitKeyValues;
+		import std.conv : to;
+		const capDetails = availableCapabilities[cap.name];
+		switch (cap.name) {
+			case "sasl":
+				supportedSASLMechs = capDetails.value.splitter(",").array;
+				startSASL();
+				break;
+			case "draft/metadata-2":
+				maxMetadataSubscriptions = ulong.max;
+				maxMetadataSelfKeys = ulong.max;
+				foreach (kv; capDetails.value.splitKeyValues) {
+					switch (kv.key) {
+						case "maxsub":
+							if (!kv.value.isNull) {
+								maxMetadataSubscriptions = kv.value.get.to!ulong;
+							}
+							break;
+						case "maxkey":
+							if (!kv.value.isNull) {
+								maxMetadataSelfKeys = kv.value.get.to!ulong;
+							}
+							break;
+						default: break;
+					}
+				}
+				break;
+			default: break;
 		}
 	}
 	private void startSASL() {
@@ -1247,6 +1281,7 @@ struct IRCClient(alias mix, T) if (isOutputRange!(T, char)) {
 		if (cmd.filter!(x => !x.isDigit).empty) {
 			recUnknownNumeric(cmd, metadata);
 		} else {
+			tryCall!"onError"(IRCError(ErrorType.unrecognized, cmd), metadata);
 			debug(verboseirc) import std.experimental.logger : trace;
 			debug(verboseirc) trace(" Unknown command: ", metadata.original);
 		}
@@ -1442,9 +1477,28 @@ struct IRCClient(alias mix, T) if (isOutputRange!(T, char)) {
 			userMetadata[target.user.get].remove(key);
 		}
 	}
+	private void rec(string cmd : Numeric.RPL_METADATASUBOK)(IRCMessage message, const MessageMetadata metadata) {
+		auto parsed = parseNumeric!(Numeric.RPL_METADATASUBOK)(message.args);
+		if (!parsed.isNull) {
+			foreach (sub; parsed.get.subs) {
+				if (!metadataSubscribedKeys.canFind(sub)) {
+					metadataSubscribedKeys ~= sub;
+				}
+			}
+		} else {
+			tryCall!"onError"(IRCError(ErrorType.malformed), metadata);
+		}
+	}
+	private void rec(string cmd : Numeric.RPL_METADATAUNSUBOK)(IRCMessage message, const MessageMetadata metadata) {
+		auto parsed = parseNumeric!(Numeric.RPL_METADATAUNSUBOK)(message.args);
+		if (!parsed.isNull) {
+			metadataSubscribedKeys = metadataSubscribedKeys.filter!(x => !parsed.get.subs.canFind(x)).array;
+		} else {
+			tryCall!"onError"(IRCError(ErrorType.malformed), metadata);
+		}
+	}
 	private void rec(string cmd : Numeric.RPL_METADATASUBS)(IRCMessage message, const MessageMetadata metadata) {
-		auto split = message.args;
-		auto reply = parseNumeric!(Numeric.RPL_METADATASUBS)(split);
+		auto reply = parseNumeric!(Numeric.RPL_METADATASUBS)(message.args);
 		if (!reply.isNull) {
 			foreach (sub; reply.get.subs) {
 				tryCall!"onMetadataSubList"(sub, metadata);
@@ -1529,6 +1583,13 @@ struct IRCClient(alias mix, T) if (isOutputRange!(T, char)) {
 			}
 			receivedSASLAuthenticationText = [];
 		}
+	}
+	private void rec(string cmd : IRCV3Commands.note)(IRCMessage message, const MessageMetadata metadata) {
+	}
+	private void rec(string cmd : IRCV3Commands.warn)(IRCMessage message, const MessageMetadata metadata) {
+	}
+	private void rec(string cmd : IRCV3Commands.fail)(IRCMessage message, const MessageMetadata metadata) {
+		tryCall!"onError"(IRCError(ErrorType.standardFail, cmd), metadata);
 	}
 }
 version(unittest) {
@@ -2924,21 +2985,266 @@ version(unittest) {
 		auto client = spawnNoBufferClient();
 		IRCError[] errors;
 		client.onError = (const IRCError error, const MessageMetadata md) {
-			assert(error.type != ErrorType.unrecognized, "Did not recognize "~md.original);
 			errors ~= error;
 		};
 		string[] subs;
 		client.onMetadataSubList = (const string str, const MessageMetadata) {
 			subs ~= str;
 		};
-		initializeWithCaps(client, [Capability("metadata")]);
+		initializeWithCaps(client, [Capability("draft/metadata-2", "foo,maxsub=50,maxkey=25,bar")]);
 
 
-		client.whois("user1");
-		client.put(":irc.example.com 760 user1 something * :some data");
-		client.put(":irc.example.com 311 Someone user1 someUsername someHostname * :Some Real Name");
-		client.put(":irc.example.com 318 Someone user1 :End of /WHOIS list");
-		assert(client.userMetadata[User("user1")]["something"] == "some data");
+		assert(client.maxMetadataSubscriptions == 50);
+		assert(client.maxMetadataSelfKeys == 25);
+
+		client.setMetadata("url", "http://www.example.com");
+		assert(client.output.data.lineSplitter().array[$-1] == "METADATA * SET url :http://www.example.com");
+		client.put(":irc.example.com 761 * url * :http://www.example.com");
+		assert(client.ownMetadata["url"] == "http://www.example.com");
+
+		client.setMetadata("url", "http://www.example.com");
+		client.put("FAIL METADATA LIMIT_REACHED :Metadata limit reached");
+		assert(errors.length == 1);
+		with(errors[0]) {
+			assert(type == ErrorType.standardFail);
+		}
+
+		client.setMetadata(User("user1"), "url", "http://www.example.com");
+		assert(client.output.data.lineSplitter().array[$ - 1] == "METADATA user1 SET url :http://www.example.com");
+		client.put("FAIL METADATA KEY_NO_PERMISSION url user1 :You do not have permission to set 'url' on 'user1'");
+		assert(errors.length == 2);
+		with(errors[1]) {
+			assert(type == ErrorType.standardFail);
+		}
+
+		client.setMetadata(Channel("#example"), "url", "http://www.example.com");
+		assert(client.output.data.lineSplitter().array[$ - 1] == "METADATA #example SET url :http://www.example.com");
+		client.put(":irc.example.com 761 #example url * :http://www.example.com");
+		assert(client.channelMetadata[Channel("#example")]["url"] == "http://www.example.com");
+
+		client.setMetadata(User("$a:user"), "url", "http://www.example.com");
+		client.put("FAIL METADATA INVALID_TARGET $a:user :Invalid target.");
+		assert(errors.length == 3);
+		with(errors[2]) {
+			assert(type == ErrorType.standardFail);
+		}
+
+		client.setMetadata(User("user1"), "$url$", "http://www.example.com");
+		client.put("FAIL METADATA INVALID_KEY $url$ user1 :Invalid key.");
+		assert(errors.length == 4);
+		with(errors[3]) {
+			assert(type == ErrorType.standardFail);
+		}
+
+		client.setMetadata("url", "http://www.example.com");
+		client.put("FAIL METADATA RATE_LIMIT url 5 :Rate-limit reached. You're going too fast! Try again in 5 seconds.");
+		assert(errors.length == 5);
+		with(errors[4]) {
+			assert(type == ErrorType.standardFail);
+		}
+
+		client.setMetadata("url", "http://www.example.com");
+		client.put("FAIL METADATA RATE_LIMIT url * :Rate-limit reached. You're going too fast!");
+		assert(errors.length == 6);
+		with(errors[5]) {
+			assert(type == ErrorType.standardFail);
+		}
+
+		client.put(":irc.example.com METADATA user1 account * :user1");
+		assert(client.userMetadata[User("user1")]["account"] == "user1");
+
+		client.put(":user1!~user@somewhere.example.com METADATA #example url * :http://www.example.com");
+		assert(client.channelMetadata[Channel("#example")]["url"] == "http://www.example.com");
+
+		client.put(":irc.example.com METADATA #example wiki-url * :http://wiki.example.com");
+		assert(client.channelMetadata[Channel("#example")]["wiki-url"] == "http://wiki.example.com");
+
+		client.listMetadata(User("user1"));
+		client.put(":irc.example.com BATCH +VUN2ot metadata");
+		client.put("@batch=VUN2ot :irc.example.com 761 user1 url * :http://www.example.com");
+		client.put("@batch=VUN2ot :irc.example.com 761 user1 im.xmpp * :user1@xmpp.example.com");
+		client.put("@batch=VUN2ot :irc.example.com 761 user1 bot-likeliness-score visible-only-for-admin :42");
+		client.put(":irc.example.com BATCH -VUN2ot");
+		assert(client.userMetadata[User("user1")]["url"] == "http://www.example.com");
+		assert(client.userMetadata[User("user1")]["im.xmpp"] == "user1@xmpp.example.com");
+		assert(client.userMetadata[User("user1")]["bot-likeliness-score"] == "42");
+
+		client.userMetadata.remove(User("user1"));
+
+		client.getMetadata(User("user1"), "blargh", "splot", "im.xmpp");
+		client.put(":irc.example.com BATCH +gWkCiV metadata");
+		client.put("@batch=gWkCiV 766 user1 blargh :No matching key");
+		client.put("@batch=gWkCiV 766 user1 splot :No matching key");
+		client.put("@batch=gWkCiV :irc.example.com 761 user1 im.xmpp * :user1@xmpp.example.com");
+		client.put(":irc.example.com BATCH -gWkCiV");
+		assert("blargh" !in client.userMetadata[User("user1")]);
+		assert("splot" !in client.userMetadata[User("user1")]);
+		assert(client.userMetadata[User("user1")]["im.xmpp"] == "user1@xmpp.example.com");
+		assert(errors.length == 8);
+		with(errors[6]) {
+			assert(type == ErrorType.keyNotSet);
+		}
+		with(errors[7]) {
+			assert(type == ErrorType.keyNotSet);
+		}
+
+		client.join(Channel("#smallchan"));
+		client.put(":modernclient!modernclient@example.com JOIN #smallchan");
+		client.put(":irc.example.com 353 modernclient @ #smallchan :user1 user2 user3 user4 user5 ...");
+		client.put(":irc.example.com 353 modernclient @ #smallchan :user51 user52 user53 user54 ...");
+		client.put(":irc.example.com 353 modernclient @ #smallchan :user101 user102 user103 user104 ...");
+		client.put(":irc.example.com 353 modernclient @ #smallchan :user151 user152 user153 user154 ...");
+		client.put(":irc.example.com 366 modernclient #smallchan :End of /NAMES list.");
+		client.put(":irc.example.com BATCH +UwZ67M metadata");
+		client.put("@batch=UwZ67M :irc.example.com METADATA user2 bar * :second example value ");
+		client.put("@batch=UwZ67M :irc.example.com METADATA user1 foo * :third example value");
+		client.put("@batch=UwZ67M :irc.example.com METADATA user1 bar * :this is another example value");
+		client.put("@batch=UwZ67M :irc.example.com METADATA user3 website * :www.example.com");
+		client.put(":irc.example.com BATCH -UwZ67M");
+		assert(client.userMetadata[User("user1")]["foo"] == "third example value");
+		assert(client.userMetadata[User("user1")]["bar"] == "this is another example value");
+		assert(client.userMetadata[User("user2")]["bar"] == "second example value ");
+		assert(client.userMetadata[User("user3")]["website"] == "www.example.com");
+
+		client.join(Channel("#bigchan"));
+		client.put(":modernclient!modernclient@example.com JOIN #bigchan");
+		client.put(":irc.example.com 353 modernclient @ #bigchan :user1 user2 user3 user4 user5 ...");
+		client.put(":irc.example.com 353 modernclient @ #bigchan :user51 user52 user53 user54 ...");
+		client.put(":irc.example.com 353 modernclient @ #bigchan :user101 user102 user103 user104 ...");
+		client.put(":irc.example.com 353 modernclient @ #bigchan :user151 user152 user153 user154 ...");
+		client.put(":irc.example.com 366 modernclient #bigchan :End of /NAMES list.");
+		client.put(":irc.example.com 774 modernclient #bigchan 4");
+		assert(errors.length == 9);
+		with(errors[8]) {
+			assert(type == ErrorType.waitAndRetry);
+		}
+
+		client.syncMetadata(Channel("#bigchan"));
+		client.put(":irc.example.com 774 modernclient #bigchan 6");
+		assert(errors.length == 10);
+		with(errors[9]) {
+			assert(type == ErrorType.waitAndRetry);
+		}
+
+		client.syncMetadata(Channel("#bigchan"));
+		client.put(":irc.example.com BATCH +O5J6rk metadata");
+		client.put("@batch=O5J6rk :irc.example.com METADATA user52 foo * :example value 1");
+		client.put("@batch=O5J6rk :irc.example.com METADATA user2 bar * :second example value ");
+		client.put("@batch=O5J6rk :irc.example.com METADATA user1 foo * :third example value");
+		client.put("@batch=O5J6rk :irc.example.com METADATA user1 bar * :this is another example value");
+		client.put("@batch=O5J6rk :irc.example.com METADATA user152 baz * :Lorem ipsum");
+		client.put("@batch=O5J6rk :irc.example.com METADATA user3 website * :www.example.com");
+		client.put("@batch=O5J6rk :irc.example.com METADATA user152 bar * :dolor sit amet");
+		client.put(":irc.example.com BATCH -O5J6rk");
+		assert(client.userMetadata[User("user1")]["foo"] == "third example value");
+		assert(client.userMetadata[User("user1")]["bar"] == "this is another example value");
+		assert(client.userMetadata[User("user2")]["bar"] == "second example value ");
+		assert(client.userMetadata[User("user3")]["website"] == "www.example.com");
+		assert(client.userMetadata[User("user52")]["foo"] == "example value 1");
+		assert(client.userMetadata[User("user152")]["baz"] == "Lorem ipsum");
+		assert(client.userMetadata[User("user152")]["bar"] == "dolor sit amet");
+
+		client.subscribeMetadata("avatar", "website", "foo", "bar");
+		client.put(":irc.example.com 770 modernclient :avatar website foo bar");
+		assert(client.isSubscribed("avatar"));
+		assert(client.isSubscribed("website"));
+		assert(client.isSubscribed("foo"));
+		assert(client.isSubscribed("bar"));
+		client.unsubscribeMetadata("foo", "bar");
+		client.put(":irc.example.com 771 modernclient :bar foo");
+		assert(!client.isSubscribed("foo"));
+		assert(!client.isSubscribed("bar"));
+
+		client.subscribeMetadata("avatar", "website", "foo", "bar", "baz");
+		client.put(":irc.example.com 770 modernclient :avatar website");
+		client.put(":irc.example.com 770 modernclient :foo");
+		client.put(":irc.example.com 770 modernclient :bar baz");
+		assert(client.isSubscribed("avatar"));
+		assert(client.isSubscribed("website"));
+		assert(client.isSubscribed("foo"));
+		assert(client.isSubscribed("bar"));
+		assert(client.isSubscribed("baz"));
+
+		client.subscribeMetadata("foo", "$url", "bar");
+		client.put(":irc.example.com 770 modernclient :foo bar");
+		client.put("FAIL METADATA INVALID_KEY $url :Invalid key");
+		assert(errors.length == 11);
+		with(errors[10]) {
+			assert(type == ErrorType.standardFail);
+		}
+
+		// uh oh zone
+		client.metadataSubscribedKeys = [];
+		client.subscribeMetadata("website", "avatar", "foo", "bar", "baz");
+		client.put(":irc.example.com 770 modernclient :website avatar foo bar baz");
+		client.subscribeMetadata("email", "city");
+		client.put("FAIL METADATA TOO_MANY_SUBS email :Too many subscriptions!");
+		client.listSubscribedMetadata();
+		client.put(":irc.example.com 772 modernclient :website avatar foo bar baz");
+		assert(errors.length == 12);
+		with(errors[11]) {
+			assert(type == ErrorType.standardFail);
+		}
+		assert(client.isSubscribed("website"));
+		assert(client.isSubscribed("avatar"));
+		assert(client.isSubscribed("foo"));
+		assert(client.isSubscribed("bar"));
+		assert(client.isSubscribed("baz"));
+		assert(!client.isSubscribed("email"));
+		assert(!client.isSubscribed("city"));
+
+		client.metadataSubscribedKeys = [];
+		client.subscribeMetadata("website", "avatar", "foo");
+		client.put(":irc.example.com 770 modernclient :website avatar foo");
+		client.subscribeMetadata("email", "city", "country", "bar", "baz");
+		client.put("FAIL METADATA TOO_MANY_SUBS country :Too many subscriptions!");
+		client.put(":irc.example.com 770 modernclient :email city");
+		client.listSubscribedMetadata();
+		client.put(":irc.example.com 772 modernclient :website avatar city foo email");
+		assert(errors.length == 13);
+		with(errors[12]) {
+			assert(type == ErrorType.standardFail);
+		}
+		assert(client.isSubscribed("website"));
+		assert(client.isSubscribed("avatar"));
+		assert(client.isSubscribed("foo"));
+		assert(client.isSubscribed("email"));
+		assert(client.isSubscribed("city"));
+		assert(!client.isSubscribed("country"));
+		assert(!client.isSubscribed("bar"));
+		assert(!client.isSubscribed("baz"));
+
+		client.metadataSubscribedKeys = [];
+		client.subscribeMetadata("avatar", "website");
+		client.put(":irc.example.com 770 modernclient :avatar website");
+		client.subscribeMetadata("foo", "avatar", "website");
+		client.put("FAIL METADATA TOO_MANY_SUBS website :Too many subscriptions!");
+		client.put(":irc.example.com 770 modernclient :foo");
+		client.listSubscribedMetadata();
+		client.put(":irc.example.com 772 modernclient :avatar foo website");
+		assert(errors.length == 14);
+		with(errors[13]) {
+			assert(type == ErrorType.standardFail);
+		}
+		assert(client.isSubscribed("avatar"));
+		assert(client.isSubscribed("foo"));
+		assert(client.isSubscribed("website"));
+		assert(!client.isSubscribed("country"));
+		assert(!client.isSubscribed("bar"));
+		assert(!client.isSubscribed("baz"));
+
+		client.metadataSubscribedKeys = [];
+		client.subscribeMetadata("website", "avatar", "foo", "bar", "baz");
+		client.put(":irc.example.com 770 modernclient :website avatar foo bar baz");
+		client.listSubscribedMetadata();
+		client.put(":irc.example.com 772 modernclient :avatar bar baz foo website");
+		assert(client.isSubscribed("avatar"));
+		assert(client.isSubscribed("foo"));
+		assert(client.isSubscribed("website"));
+		assert(client.isSubscribed("bar"));
+		assert(client.isSubscribed("baz"));
+
+		// end of uh oh zone
 
 	}
 }
