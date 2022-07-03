@@ -59,6 +59,7 @@ enum supportedCaps = AliasSeq!(
 	"extended-join", // http://ircv3.net/specs/extensions/extended-join-3.1.html
 	"invite-notify", // http://ircv3.net/specs/extensions/invite-notify-3.2.html
 	"draft/metadata-2", //
+	"draft/metadata-notify-2", //
 	//"monitor", // http://ircv3.net/specs/core/monitor-3.2.html
 	"multi-prefix", // http://ircv3.net/specs/extensions/multi-prefix-3.1.html
 	"sasl", // http://ircv3.net/specs/extensions/sasl-3.1.html and http://ircv3.net/specs/extensions/sasl-3.2.html
@@ -2991,7 +2992,7 @@ version(unittest) {
 		client.onMetadataSubList = (const string str, const MessageMetadata) {
 			subs ~= str;
 		};
-		initializeWithCaps(client, [Capability("draft/metadata-2", "foo,maxsub=50,maxkey=25,bar")]);
+		initializeWithCaps(client, [Capability("draft/metadata-2", "foo,maxsub=50,maxkey=25,bar"), Capability("draft/metadata-notify-2")]);
 
 
 		assert(client.maxMetadataSubscriptions == 50);
@@ -3243,6 +3244,131 @@ version(unittest) {
 		assert(client.isSubscribed("website"));
 		assert(client.isSubscribed("bar"));
 		assert(client.isSubscribed("baz"));
+
+		client.metadataSubscribedKeys = [];
+		client.subscribeMetadata("website", "avatar", "foo", "bar", "baz");
+		client.put(":irc.example.com 770 modernclient :website avatar foo bar baz");
+		client.listSubscribedMetadata();
+		client.put(":irc.example.com 772 modernclient :avatar");
+		client.put(":irc.example.com 772 modernclient :bar baz");
+		client.put(":irc.example.com 772 modernclient :foo website");
+		assert(client.isSubscribed("avatar"));
+		assert(client.isSubscribed("foo"));
+		assert(client.isSubscribed("website"));
+		assert(client.isSubscribed("bar"));
+		assert(client.isSubscribed("baz"));
+
+		client.metadataSubscribedKeys = [];
+		client.listSubscribedMetadata();
+
+		client.metadataSubscribedKeys = [];
+		client.subscribeMetadata("website", "avatar", "foo", "bar", "baz");
+		client.put(":irc.example.com 770 modernclient :website avatar foo bar baz");
+		client.listSubscribedMetadata();
+		client.put(":irc.example.com 772 modernclient :avatar bar baz foo website");
+		client.unsubscribeMetadata("bar", "foo", "baz");
+		client.put(":irc.example.com 771 modernclient :baz foo bar");
+		client.listSubscribedMetadata();
+		client.put(":irc.example.com 772 modernclient :avatar website");
+		assert(client.isSubscribed("avatar"));
+		assert(client.isSubscribed("website"));
+
+		client.metadataSubscribedKeys = [];
+		client.subscribeMetadata("website", "avatar", "foo", "bar", "baz");
+		client.put(":irc.example.com 770 modernclient :website avatar foo bar baz");
+		client.listSubscribedMetadata();
+		client.put(":irc.example.com 772 modernclient :avatar bar baz foo website");
+		client.subscribeMetadata("avatar", "website");
+		client.put(":irc.example.com 770 modernclient :avatar website");
+		client.listSubscribedMetadata();
+		client.put(":irc.example.com 772 modernclient :avatar bar baz foo website");
+		assert(client.isSubscribed("avatar"));
+		assert(client.isSubscribed("website"));
+		assert(client.isSubscribed("foo"));
+		assert(client.isSubscribed("bar"));
+		assert(client.isSubscribed("baz"));
+
+		client.metadataSubscribedKeys = [];
+		client.subscribeMetadata("avatar", "avatar");
+		client.put(":irc.example.com 770 modernclient :avatar");
+		client.listSubscribedMetadata();
+		client.put(":irc.example.com 772 modernclient :avatar");
+		assert(client.isSubscribed("avatar"));
+
+		client.metadataSubscribedKeys = [];
+		client.subscribeMetadata("avatar", "avatar");
+		client.put(":irc.example.com 770 modernclient :avatar avatar");
+		client.listSubscribedMetadata();
+		client.put(":irc.example.com 772 modernclient :avatar");
+		assert(client.isSubscribed("avatar"));
+
+		client.metadataSubscribedKeys = [];
+		client.listSubscribedMetadata();
+		client.unsubscribeMetadata("website");
+		client.put(":irc.example.com 771 modernclient :website");
+		assert(!client.isSubscribed("website"));
+		client.listSubscribedMetadata();
+		client.subscribeMetadata("website");
+		client.put(":irc.example.com 770 modernclient :website");
+		client.listSubscribedMetadata();
+		client.put(":irc.example.com 772 modernclient :website");
+		assert(client.isSubscribed("website"));
+
+		client.metadataSubscribedKeys = [];
+		client.listSubscribedMetadata();
+		client.put(":irc.example.com 772 modernclient :website");
+		client.unsubscribeMetadata("website", "website");
+		client.put(":irc.example.com 771 modernclient :website");
+		assert(!client.isSubscribed("website"));
+
+		client.metadataSubscribedKeys = [];
+		client.listSubscribedMetadata();
+		client.put(":irc.example.com 772 modernclient :website");
+		client.unsubscribeMetadata("website", "website");
+		client.put(":irc.example.com 771 modernclient :website website");
+		assert(!client.isSubscribed("website"));
+
+		client.metadataSubscribedKeys = [];
+		client.subscribeMetadata("avatar", "secretkey", "website");
+		client.put("FAIL METADATA KEY_NO_PERMISSION secretkey modernclient :You do not have permission to do that.");
+		client.put(":irc.example.com 770 modernclient :avatar website");
+		client.listSubscribedMetadata();
+		client.put(":irc.example.com 772 modernclient :avatar website");
+		assert(!client.isSubscribed("secretkey"));
+		assert(client.isSubscribed("website"));
+		assert(client.isSubscribed("avatar"));
+		assert(errors.length == 15);
+		with(errors[14]) {
+			assert(type == ErrorType.standardFail);
+		}
+
+		client.metadataSubscribedKeys = [];
+		client.subscribeMetadata("$invalid1", "secretkey1", "$invalid2", "secretkey2", "website");
+		client.put("FAIL METADATA KEY_NO_PERMISSION secretkey1 modernclient :You do not have permission to do that.");
+		client.put("FAIL METADATA KEY_INVALID $invalid1 modernclient :Invalid key");
+		client.put("FAIL METADATA KEY_NO_PERMISSION secretkey2 modernclient :You do not have permission to do that.");
+		client.put("FAIL METADATA KEY_INVALID $invalid2 modernclient :Invalid key");
+		client.put(":irc.example.com 770 modernclient :website");
+		client.listSubscribedMetadata();
+		client.put(":irc.example.com 772 modernclient :website");
+		assert(!client.isSubscribed("$invalid1"));
+		assert(!client.isSubscribed("secretkey1"));
+		assert(!client.isSubscribed("$invalid2"));
+		assert(!client.isSubscribed("secretkey2"));
+		assert(client.isSubscribed("website"));
+		assert(errors.length == 19);
+		with(errors[15]) {
+			assert(type == ErrorType.standardFail);
+		}
+		with(errors[16]) {
+			assert(type == ErrorType.standardFail);
+		}
+		with(errors[17]) {
+			assert(type == ErrorType.standardFail);
+		}
+		with(errors[18]) {
+			assert(type == ErrorType.standardFail);
+		}
 
 		// end of uh oh zone
 
