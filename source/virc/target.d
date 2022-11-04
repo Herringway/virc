@@ -69,7 +69,7 @@ struct Target {
 	this(User user_) @safe pure nothrow @nogc {
 		user = user_;
 	}
-	package this(string str, string modePrefixes, string channelPrefixes) @safe pure nothrow {
+	this(string str, string modePrefixes, string channelPrefixes) @safe pure nothrow {
 		import std.array : empty, front, popFront;
 		import std.algorithm : canFind;
 		import std.utf : byDchar;
