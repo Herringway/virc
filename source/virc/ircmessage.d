@@ -76,28 +76,26 @@ struct IRCMessage {
 		}
 		argString = format!"%-(%s %|%):%s"(input[0..$-1], input[$-1]);
 	}
-	string toString() const @safe {
+	void toString(S)(ref S sink) const @safe {
 		import std.conv : text;
-		string result;
+		import std.format : formattedWrite;
+		import std.range : put;
 		auto tagString = tags.toString();
-		auto source = sourceUser.get.text;
-		result.reserve(tagString.length + 2 + source.length + 2 + verb.length + 1 + argString.length + 1);
 		if (tagString != "") {
-			result ~= "@";
-			result ~= tagString;
-			result ~= " ";
+			put(sink, "@");
+			put(sink, tagString);
+			put(sink, " ");
 		}
-		if (source != "") {
-			result ~= ":";
-			result ~= source;
-			result ~= " ";
+		if (!sourceUser.isNull) {
+			put(sink, ":");
+			sink.formattedWrite!"%s"(sourceUser.get);
+			put(sink, " ");
 		}
-		result ~= verb;
+		put(sink, verb);
 		if (argString != "") {
-			result ~= " ";
-			result ~= argString;
+			put(sink, " ");
+			put(sink, argString);
 		}
-		return result;
 	}
 	bool opEquals(const IRCMessage other) const @safe pure {
 		import std.algorithm.comparison : equal;
@@ -107,6 +105,7 @@ struct IRCMessage {
 
 @safe unittest {
 	import std.algorithm.comparison : equal;
+	import std.conv : text;
 	import std.range : only;
 	{
 		auto msg1 = IRCMessage("foo bar baz asdf");
@@ -319,7 +318,7 @@ struct IRCMessage {
 		assert(args.equal(["local", "I like turtles."]));
 		assert(tags.length == 0);
 	}
-	assert(IRCMessage(IRCMessage(":remote!foo@example.com PRIVMSG local :I like turtles.").toString()) == IRCMessage(":remote!foo@example.com PRIVMSG local :I like turtles."));
+	assert(IRCMessage(IRCMessage(":remote!foo@example.com PRIVMSG local :I like turtles.").text) == IRCMessage(":remote!foo@example.com PRIVMSG local :I like turtles."));
 	with(IRCMessage("@aaa=bbb;ccc;example.com/ddd=eee :nick!ident@host.com PRIVMSG me :Hello")) {
 		assert(sourceUser.get == User("nick!ident@host.com"));
 		assert(verb == "PRIVMSG");
@@ -328,13 +327,13 @@ struct IRCMessage {
 		assert(tags["ccc"] == "");
 		assert(tags["example.com/ddd"] == "eee");
 	}
-	assert(IRCMessage(IRCMessage("@aaa=bbb;ccc;example.com/ddd=eee :nick!ident@host.com PRIVMSG me :Hello").toString()) == IRCMessage("@aaa=bbb;ccc;example.com/ddd=eee :nick!ident@host.com PRIVMSG me :Hello"));
+	assert(IRCMessage(IRCMessage("@aaa=bbb;ccc;example.com/ddd=eee :nick!ident@host.com PRIVMSG me :Hello").text) == IRCMessage("@aaa=bbb;ccc;example.com/ddd=eee :nick!ident@host.com PRIVMSG me :Hello"));
 	{
 		auto msg = IRCMessage();
 		msg.sourceUser = User("server");
 		msg.verb = "HELLO";
 		msg.args = "WORLD";
-		assert(msg.toString() == ":server HELLO :WORLD");
+		assert(msg.text == ":server HELLO :WORLD");
 	}
 	with(IRCMessage(":example.com                   PRIVMSG              local           :I like turtles.")) {
 		assert(sourceUser.get == User("example.com"));
@@ -347,20 +346,20 @@ struct IRCMessage {
 		msg.sourceUser = User("server");
 		msg.verb = "HELLO";
 		msg.args = string[].init;
-		assert(msg.toString() == ":server HELLO");
+		assert(msg.text == ":server HELLO");
 	}
 	{
 		auto msg = IRCMessage();
 		msg.sourceUser = User("server");
 		msg.verb = "HELLO";
 		msg.args = ["WORLD"];
-		assert(msg.toString() == ":server HELLO :WORLD");
+		assert(msg.text == ":server HELLO :WORLD");
 	}
 	{
 		auto msg = IRCMessage();
 		msg.sourceUser = User("server");
 		msg.verb = "HELLO";
 		msg.args = ["WORLD", "!!!"];
-		assert(msg.toString() == ":server HELLO WORLD :!!!");
+		assert(msg.text == ":server HELLO WORLD :!!!");
 	}
 }
