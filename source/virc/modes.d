@@ -199,3 +199,38 @@ auto parseModeString(string input, ModeType[char] channelModeTypes) {
 		assert(testParsed.empty);
 	}
 }
+
+auto toModeStringLazy(ModeChange[] changes) {
+	static struct Result {
+		ModeChange[] changes;
+		void toString(S)(ref S sink) {
+			import std.algorithm : joiner, map;
+			import std.format : formattedWrite;
+			import std.range : put;
+			Nullable!Change last;
+			foreach(change; changes) {
+				if (last.isNull || (change.change != last)) {
+					put(sink, change.change == Change.set ? '+' : '-');
+					last = change.change;
+				}
+				put(sink, change.mode.mode);
+			}
+			sink.formattedWrite!"%-( %s%)"(changes.map!(x => x.mode.arg).joiner);
+		}
+	}
+	return Result(changes);
+}
+
+@safe pure unittest {
+	import std.conv : text;
+	assert(toModeStringLazy([ModeChange(Mode(ModeType.d, 's'), Change.set)]).text == "+s");
+	assert(toModeStringLazy([ModeChange(Mode(ModeType.d, 's'), Change.unset)]).text == "-s");
+	assert(toModeStringLazy([ModeChange(Mode(ModeType.d, 's'), Change.set), ModeChange(Mode(ModeType.d, 's'), Change.unset)]).text == "+s-s");
+	assert(toModeStringLazy([ModeChange(Mode(ModeType.d, 's'), Change.set), ModeChange(Mode(ModeType.b, 'k', Nullable!string("pass")), Change.set)]).text == "+sk pass");
+	assert(toModeStringLazy([ModeChange(Mode(ModeType.d, 's'), Change.set), ModeChange(Mode(ModeType.b, 'k', Nullable!string("pass")), Change.set), ModeChange(Mode(ModeType.c, 'l', Nullable!string("3")), Change.set)]).text == "+skl pass 3");
+}
+
+string toModeString(ModeChange[] changes) @safe pure {
+	import std.conv : text;
+	return changes.toModeStringLazy().text;
+}
