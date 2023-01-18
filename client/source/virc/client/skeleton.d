@@ -70,12 +70,8 @@ enum supportedCaps = AliasSeq!(
 /++
 +
 +/
-auto ircClient(alias mix, T)(ref T output, NickInfo info, SASLMechanism[] saslMechs = [], string password = string.init) {
-	static if (isCopyable!T) {
-		auto client = IRCClient!(mix, T)(output);
-	} else {
-		auto client = ircClient!(mix, T)(refCounted(output));
-	}
+auto ircClient(Output output, NickInfo info, SASLMechanism[] saslMechs = [], string password = string.init) {
+	auto client = IRCClient(output);
 	client.username = info.username;
 	client.realname = info.realname;
 	client.nickname = info.nickname;
@@ -85,10 +81,6 @@ auto ircClient(alias mix, T)(ref T output, NickInfo info, SASLMechanism[] saslMe
 	client.saslMechs = saslMechs;
 	client.initialize();
 	return client;
-}
-///ditto
-auto ircClient(T)(ref T output, NickInfo info, SASLMechanism[] saslMechs = [], string password = string.init) {
-	return ircClient!null(output, info, saslMechs, password);
 }
 
 /++
@@ -301,16 +293,16 @@ struct MetadataValue {
 	alias value this;
 }
 
+abstract class Output {
+	void put(char) @safe;
+}
+
 /++
 + IRC client implementation.
 +/
-struct IRCClient(alias mix, T) if (isOutputRange!(T, char)) {
+struct IRCClient {
 	import virc.ircv3 : Capability, CapabilityServerSubcommands, IRCV3Commands;
-	static if (isCopyable!T) {
-		T output;
-	} else {
-		RefCounted!T output;
-	}
+	Output output;
 	///
 	Server server;
 	///
@@ -332,98 +324,94 @@ struct IRCClient(alias mix, T) if (isOutputRange!(T, char)) {
 	///
 	InternalAddressList internalAddressList;
 
-	static if (__traits(isTemplate, mix)) {
-		mixin mix;
-	} else {
-		///
-		void delegate(const Capability, const MessageMetadata) @safe onReceiveCapList;
-		///
-		void delegate(const Capability, const MessageMetadata) @safe onReceiveCapLS;
-		///
-		void delegate(const Capability, const MessageMetadata) @safe onReceiveCapAck;
-		///
-		void delegate(const Capability, const MessageMetadata) @safe onReceiveCapNak;
-		///
-		void delegate(const Capability, const MessageMetadata) @safe onReceiveCapDel;
-		///
-		void delegate(const Capability, const MessageMetadata) @safe onReceiveCapNew;
-		///
-		void delegate(const User, const SysTime, const MessageMetadata) @safe onUserOnline;
-		///
-		void delegate(const User, const MessageMetadata) @safe onUserOffline;
-		///
-		void delegate(const User, const MessageMetadata) @safe onLogin;
-		///
-		void delegate(const User, const MessageMetadata) @safe onLogout;
-		///
-		void delegate(const User, const string, const MessageMetadata) @safe onOtherUserAwayReply;
-		///
-		void delegate(const User, const MessageMetadata) @safe onBack;
-		///
-		void delegate(const User, const MessageMetadata) @safe onMonitorList;
-		///
-		void delegate(const User, const User, const MessageMetadata) @safe onNick;
-		///
-		void delegate(const User, const User, const Channel, const MessageMetadata) @safe onInvite;
-		///
-		void delegate(const User, const Channel, const MessageMetadata) @safe onJoin;
-		///
-		void delegate(const User, const Channel, const string, const MessageMetadata) @safe onPart;
-		///
-		void delegate(const User, const Channel, const User, const string, const MessageMetadata) @safe onKick;
-		///
-		void delegate(const User, const string, const MessageMetadata) @safe onQuit;
-		///
-		void delegate(const User, const Target, const ModeChange, const MessageMetadata) @safe onMode;
-		///
-		void delegate(const User, const Target, const Message, const MessageMetadata) @safe onMessage;
-		///
-		void delegate(const User, const WhoisResponse) @safe onWhois;
-		///
-		void delegate(const User, const string, const MessageMetadata) @safe onWallops;
-		///
-		void delegate(const ChannelListResult, const MessageMetadata) @safe onList;
-		///
-		void delegate(const User, const User, const MessageMetadata) @safe onChgHost;
-		///
-		void delegate(const LUserClient, const MessageMetadata) @safe onLUserClient;
-		///
-		void delegate(const LUserOp, const MessageMetadata) @safe onLUserOp;
-		///
-		void delegate(const LUserChannels, const MessageMetadata) @safe onLUserChannels;
-		///
-		void delegate(const LUserMe, const MessageMetadata) @safe onLUserMe;
-		///
-		void delegate(const NamesReply, const MessageMetadata) @safe onNamesReply;
-		///
-		void delegate(const TopicReply, const MessageMetadata) @safe onTopicReply;
-		///
-		void delegate(const User, const Channel, const string, const MessageMetadata) @safe onTopicChange;
-		///
-		void delegate(const User, const MessageMetadata) @safe onUnAwayReply;
-		///
-		void delegate(const User, const MessageMetadata) @safe onAwayReply;
-		///
-		void delegate(const TopicWhoTime, const MessageMetadata) @safe onTopicWhoTimeReply;
-		///
-		void delegate(const VersionReply, const MessageMetadata) @safe onVersionReply;
-		///
-		void delegate(const RehashingReply, const MessageMetadata) @safe onServerRehashing;
-		///
-		void delegate(const MessageMetadata) @safe onYoureOper;
-		///Called when an RPL_ISON message is received
-		void delegate(const User, const MessageMetadata) @safe onIsOn;
-		///Called when a metadata subscription list is received
-		void delegate(const string, const MessageMetadata) @safe onMetadataSubList;
-		///
-		void delegate(const IRCError, const MessageMetadata) @safe onError;
-		///
-		void delegate(const MessageMetadata) @safe onRaw;
-		///
-		void delegate() @safe onConnect;
-		///
-		debug void delegate(const string) @safe onSend;
-	}
+	///
+	void delegate(const Capability, const MessageMetadata) @safe onReceiveCapList;
+	///
+	void delegate(const Capability, const MessageMetadata) @safe onReceiveCapLS;
+	///
+	void delegate(const Capability, const MessageMetadata) @safe onReceiveCapAck;
+	///
+	void delegate(const Capability, const MessageMetadata) @safe onReceiveCapNak;
+	///
+	void delegate(const Capability, const MessageMetadata) @safe onReceiveCapDel;
+	///
+	void delegate(const Capability, const MessageMetadata) @safe onReceiveCapNew;
+	///
+	void delegate(const User, const SysTime, const MessageMetadata) @safe onUserOnline;
+	///
+	void delegate(const User, const MessageMetadata) @safe onUserOffline;
+	///
+	void delegate(const User, const MessageMetadata) @safe onLogin;
+	///
+	void delegate(const User, const MessageMetadata) @safe onLogout;
+	///
+	void delegate(const User, const string, const MessageMetadata) @safe onOtherUserAwayReply;
+	///
+	void delegate(const User, const MessageMetadata) @safe onBack;
+	///
+	void delegate(const User, const MessageMetadata) @safe onMonitorList;
+	///
+	void delegate(const User, const User, const MessageMetadata) @safe onNick;
+	///
+	void delegate(const User, const User, const Channel, const MessageMetadata) @safe onInvite;
+	///
+	void delegate(const User, const Channel, const MessageMetadata) @safe onJoin;
+	///
+	void delegate(const User, const Channel, const string, const MessageMetadata) @safe onPart;
+	///
+	void delegate(const User, const Channel, const User, const string, const MessageMetadata) @safe onKick;
+	///
+	void delegate(const User, const string, const MessageMetadata) @safe onQuit;
+	///
+	void delegate(const User, const Target, const ModeChange, const MessageMetadata) @safe onMode;
+	///
+	void delegate(const User, const Target, const Message, const MessageMetadata) @safe onMessage;
+	///
+	void delegate(const User, const WhoisResponse) @safe onWhois;
+	///
+	void delegate(const User, const string, const MessageMetadata) @safe onWallops;
+	///
+	void delegate(const ChannelListResult, const MessageMetadata) @safe onList;
+	///
+	void delegate(const User, const User, const MessageMetadata) @safe onChgHost;
+	///
+	void delegate(const LUserClient, const MessageMetadata) @safe onLUserClient;
+	///
+	void delegate(const LUserOp, const MessageMetadata) @safe onLUserOp;
+	///
+	void delegate(const LUserChannels, const MessageMetadata) @safe onLUserChannels;
+	///
+	void delegate(const LUserMe, const MessageMetadata) @safe onLUserMe;
+	///
+	void delegate(const NamesReply, const MessageMetadata) @safe onNamesReply;
+	///
+	void delegate(const TopicReply, const MessageMetadata) @safe onTopicReply;
+	///
+	void delegate(const User, const Channel, const string, const MessageMetadata) @safe onTopicChange;
+	///
+	void delegate(const User, const MessageMetadata) @safe onUnAwayReply;
+	///
+	void delegate(const User, const MessageMetadata) @safe onAwayReply;
+	///
+	void delegate(const TopicWhoTime, const MessageMetadata) @safe onTopicWhoTimeReply;
+	///
+	void delegate(const VersionReply, const MessageMetadata) @safe onVersionReply;
+	///
+	void delegate(const RehashingReply, const MessageMetadata) @safe onServerRehashing;
+	///
+	void delegate(const MessageMetadata) @safe onYoureOper;
+	///Called when an RPL_ISON message is received
+	void delegate(const User, const MessageMetadata) @safe onIsOn;
+	///Called when a metadata subscription list is received
+	void delegate(const string, const MessageMetadata) @safe onMetadataSubList;
+	///
+	void delegate(const IRCError, const MessageMetadata) @safe onError;
+	///
+	void delegate(const MessageMetadata) @safe onRaw;
+	///
+	void delegate() @safe onConnect;
+	///
+	debug void delegate(const string) @safe onSend;
 
 
 	private bool invalid = true;
@@ -444,11 +432,11 @@ struct IRCClient(alias mix, T) if (isOutputRange!(T, char)) {
 
 	private WhoisResponse[string] whoisCache;
 
-	bool isAuthenticated() {
+	bool isAuthenticated() @safe {
 		return authenticationSucceeded;
 	}
 
-	void initialize() {
+	void initialize() @safe {
 		debug(verboseirc) {
 			import std.experimental.logger : trace;
 			trace("-------------------------");
@@ -457,22 +445,22 @@ struct IRCClient(alias mix, T) if (isOutputRange!(T, char)) {
 		write("CAP LS 302");
 		register();
 	}
-	public void ping() {
+	public void ping() @safe {
 
 	}
-	public void names() {
+	public void names() @safe {
 		write("NAMES");
 	}
-	public void ping(const string nonce) {
+	public void ping(const string nonce) @safe {
 		write!"PING :%s"(nonce);
 	}
-	public void lUsers() {
+	public void lUsers() @safe {
 		write!"LUSERS";
 	}
-	private void pong(const string nonce) {
+	private void pong(const string nonce) @safe {
 		write!"PONG :%s"(nonce);
 	}
-	public void put(string line) {
+	public void put(string line) @safe {
 		import std.conv : asOriginalType;
 		import std.meta : NoDuplicates;
 		import std.string : representation;
@@ -532,45 +520,45 @@ struct IRCClient(alias mix, T) if (isOutputRange!(T, char)) {
 			}
 		}
 	}
-	void put(const immutable(ubyte)[] rawString) {
+	void put(const immutable(ubyte)[] rawString) @safe {
 		put(rawString.toUTF8String);
 	}
-	private void tryEndRegistration() {
+	private void tryEndRegistration() @safe {
 		if (capReqCount == 0 && !isAuthenticating && !isRegistered) {
 			endRegistration();
 		}
 	}
-	private void endAuthentication() {
+	private void endAuthentication() @safe {
 		isAuthenticating = false;
 		tryEndRegistration();
 	}
-	private void endRegistration() {
+	private void endRegistration() @safe {
 		write("CAP END");
 	}
-	public void capList() {
+	public void capList() @safe {
 		write("CAP LIST");
 	}
-	public void list() {
+	public void list() @safe {
 		write("LIST");
 	}
-	public void away(const string message) {
+	public void away(const string message) @safe {
 		write!"AWAY :%s"(message);
 	}
-	public void away() {
+	public void away() @safe {
 		write("AWAY");
 	}
-	public void whois(const string nick) {
+	public void whois(const string nick) @safe {
 		write!"WHOIS %s"(nick);
 	}
-	public void monitorClear() {
+	public void monitorClear() @safe {
 		assert(monitorIsEnabled);
 		write("MONITOR C");
 	}
-	public void monitorList() {
+	public void monitorList() @safe {
 		assert(monitorIsEnabled);
 		write("MONITOR L");
 	}
-	public void monitorStatus() {
+	public void monitorStatus() @safe {
 		assert(monitorIsEnabled);
 		write("MONITOR S");
 	}
@@ -582,17 +570,17 @@ struct IRCClient(alias mix, T) if (isOutputRange!(T, char)) {
 		assert(monitorIsEnabled);
 		writeList!("MONITOR - ", ",")(users.map!(x => x.nickname));
 	}
-	public bool isAway() const {
+	public bool isAway() const @safe {
 		return _isAway;
 	}
-	public bool monitorIsEnabled() {
+	public bool monitorIsEnabled() @safe {
 		return capsEnabled.canFind("MONITOR");
 	}
-	public void quit(const string msg) {
+	public void quit(const string msg) @safe {
 		write!"QUIT :%s"(msg);
 		invalid = true;
 	}
-	public void changeNickname(const string nick) {
+	public void changeNickname(const string nick) @safe {
 		write!"NICK %s"(nick);
 	}
 	public void join(T,U)(T chans, U keys) if (isInputRange!T && isInputRange!U) {
@@ -603,136 +591,136 @@ struct IRCClient(alias mix, T) if (isOutputRange!(T, char)) {
 			write!"JOIN %-(%s,%)"(chans);
 		}
 	}
-	public void join(const string chan, const string key = "") {
+	public void join(const string chan, const string key = "") @safe {
 		import std.range : only;
 		join(only(chan), only(key));
 	}
-	public void join(const Channel chan, const string key = "") {
+	public void join(const Channel chan, const string key = "") @safe {
 		import std.range : only;
 		join(only(chan.text), only(key));
 	}
-	public void msg(const string target, const string message) {
+	public void msg(const string target, const string message) @safe {
 		write!"PRIVMSG %s :%s"(target, message);
 	}
-	public void wallops(const string message) {
+	public void wallops(const string message) @safe {
 		write!"WALLOPS :%s"(message);
 	}
-	public void msg(const Target target, const Message message) {
+	public void msg(const Target target, const Message message) @safe {
 		msg(target.targetText, message.text);
 	}
-	public void ctcp(const Target target, const string command, const string args) {
+	public void ctcp(const Target target, const string command, const string args) @safe {
 		msg(target, Message("\x01"~command~" "~args~"\x01"));
 	}
-	public void ctcp(const Target target, const string command) {
+	public void ctcp(const Target target, const string command) @safe {
 		msg(target, Message("\x01"~command~"\x01"));
 	}
-	public void ctcpReply(const Target target, const string command, const string args) {
+	public void ctcpReply(const Target target, const string command, const string args) @safe {
 		notice(target, Message("\x01"~command~" "~args~"\x01"));
 	}
-	public void notice(const string target, const string message) {
+	public void notice(const string target, const string message) @safe {
 		write!"NOTICE %s :%s"(target, message);
 	}
-	public void notice(const Target target, const Message message) {
+	public void notice(const Target target, const Message message) @safe {
 		notice(target.targetText, message.text);
 	}
-	public void changeTopic(const Target target, const string topic) {
+	public void changeTopic(const Target target, const string topic) @safe {
 		write!"TOPIC %s :%s"(target, topic);
 	}
-	public void oper(const string name, const string pass) {
+	public void oper(const string name, const string pass) @safe {
 		assert(!name.canFind(" ") && !pass.canFind(" "));
 		write!"OPER %s %s"(name, pass);
 	}
-	public void rehash() {
+	public void rehash() @safe {
 		write!"REHASH";
 	}
-	public void restart() {
+	public void restart() @safe {
 		write!"RESTART";
 	}
-	public void squit(const string server, const string reason) {
+	public void squit(const string server, const string reason) @safe {
 		assert(!server.canFind(" "));
 		write!"SQUIT %s :%s"(server, reason);
 	}
-	public void version_() {
+	public void version_() @safe {
 		write!"VERSION"();
 	}
-	public void version_(const string serverMask) {
+	public void version_(const string serverMask) @safe {
 		write!"VERSION %s"(serverMask);
 	}
-	public void kick(const Channel chan, const User nick, const string message = "") {
+	public void kick(const Channel chan, const User nick, const string message = "") @safe {
 		assert(message.length < server.iSupport.kickLength, "Kick message length exceeded");
 		write!"KICK %s %s :%s"(chan, nick, message);
 	}
-	public void isOn(const string[] nicknames...) {
+	public void isOn(const string[] nicknames...) @safe {
 		write!"ISON %-(%s %)"(nicknames);
 	}
-	public void isOn(const User[] users...) {
+	public void isOn(const User[] users...) @safe {
 		write!"ISON %-(%s %)"(users.map!(x => x.nickname));
 	}
-	public void admin(const string server = "") {
+	public void admin(const string server = "") @safe {
 		if (server == "") {
 			write!"ADMIN"();
 		} else {
 			write!"ADMIN %s"(server);
 		}
 	}
-	public auto ownMetadata() const {
+	public auto ownMetadata() const @safe {
 		if (me !in userMetadata) {
 			return null;
 		}
 		return userMetadata[me];
 	}
-	public void setMetadata(const User user, const string key, const string data) {
+	public void setMetadata(const User user, const string key, const string data) @safe {
 		write!"METADATA %s SET %s :%s"(user, key, data);
 	}
-	public void setMetadata(const Channel channel, const string key, const string data) {
+	public void setMetadata(const Channel channel, const string key, const string data) @safe {
 		write!"METADATA %s SET %s :%s"(channel, key, data);
 	}
-	public void setMetadata(const string key, const string data) {
+	public void setMetadata(const string key, const string data) @safe {
 		write!"METADATA * SET %s :%s"(key, data);
 	}
-	public void getMetadata(const Channel channel, const string[] keys...) {
+	public void getMetadata(const Channel channel, const string[] keys...) @safe {
 		write!"METADATA %s GET %-(%s %)"(channel, keys);
 	}
-	public void getMetadata(const User user, const string[] keys...) {
+	public void getMetadata(const User user, const string[] keys...) @safe {
 		write!"METADATA %s GET %-(%s %)"(user, keys);
 	}
-	public void listMetadata(const Channel channel) {
+	public void listMetadata(const Channel channel) @safe {
 		write!"METADATA %s LIST"(channel);
 	}
-	public void listMetadata(const User user) {
+	public void listMetadata(const User user) @safe {
 		write!"METADATA %s LIST"(user);
 	}
-	public void subscribeMetadata(const string[] keys...) {
+	public void subscribeMetadata(const string[] keys...) @safe {
 		write!"METADATA * SUB %-(%s %)"(keys);
 	}
-	public void unsubscribeMetadata(const string[] keys...) {
+	public void unsubscribeMetadata(const string[] keys...) @safe {
 		write!"METADATA * UNSUB %-(%s %)"(keys);
 	}
-	public void listSubscribedMetadata() {
+	public void listSubscribedMetadata() @safe {
 		write!"METADATA * SUBS"();
 	}
-	public void syncMetadata(const User user) {
+	public void syncMetadata(const User user) @safe {
 		write!"METADATA %s SYNC"(user);
 	}
-	public void syncMetadata(const Channel channel) {
+	public void syncMetadata(const Channel channel) @safe {
 		write!"METADATA %s SYNC"(channel);
 	}
-	public void syncMetadata() {
+	public void syncMetadata() @safe {
 		write!"METADATA * SYNC"();
 	}
-	public void clearMetadata(const User user) {
+	public void clearMetadata(const User user) @safe {
 		write!"METADATA %s CLEAR"(user);
 	}
-	public void clearMetadata(const Channel channel) {
+	public void clearMetadata(const Channel channel) @safe {
 		write!"METADATA %s CLEAR"(channel);
 	}
-	public void clearMetadata() {
+	public void clearMetadata() @safe {
 		write!"METADATA * CLEAR"();
 	}
-	public bool isSubscribed(const string key) {
+	public bool isSubscribed(const string key) @safe {
 		return metadataSubscribedKeys.canFind(key);
 	}
-	private void sendAuthenticatePayload(const string payload) {
+	private void sendAuthenticatePayload(const string payload) @safe {
 		import std.base64 : Base64;
 		import std.range : chunks;
 		import std.string : representation;
@@ -750,13 +738,13 @@ struct IRCClient(alias mix, T) if (isOutputRange!(T, char)) {
 			}
 		}
 	}
-	private void user(const string username_, const string realname_) {
+	private void user(const string username_, const string realname_) @safe {
 		write!"USER %s 0 * :%s"(username_, realname_);
 	}
-	private void pass(const string pass) {
+	private void pass(const string pass) @safe {
 		write!"PASS :%s"(pass);
 	}
-	private void register() {
+	private void register() @safe {
 		assert(!isRegistered);
 		if (!password.isNull) {
 			pass(password.get);
@@ -764,7 +752,7 @@ struct IRCClient(alias mix, T) if (isOutputRange!(T, char)) {
 		changeNickname(nickname);
 		user(username, realname);
 	}
-	private void write(string fmt, T...)(T args) {
+	private void write(string fmt, T...)(scope T args) {
 		import std.range : put;
 		debug(verboseirc) import std.experimental.logger : tracef;
 		debug(verboseirc) tracef("→: "~fmt, args);
@@ -777,38 +765,21 @@ struct IRCClient(alias mix, T) if (isOutputRange!(T, char)) {
 			output.flush();
 		}
 	}
-	private void write(T...)(const string fmt, T args) {
-		debug(verboseirc) import std.experimental.logger : tracef;
-		debug(verboseirc) tracef("→: "~fmt, args);
-		formattedWrite(output, fmt, args);
-		std.range.put(output, "\r\n");
-		debug {
-			tryCall!"onSend"(format(fmt, args));
-		}
-		static if (is(typeof(output.flush()))) {
-			output.flush();
-		}
-	}
-	private void write(const string text) {
+	private void write(const scope string text) @safe {
 		write!"%s"(text);
 	}
 	private void writeList(string prefix, string separator, T)(T range) if (isInputRange!T && is(Unqual!(ElementType!T) == string)) {
 		write!(prefix~"%-(%s"~separator~"%)")(range);
 	}
-	private bool isEnabled(const Capability cap) {
+	private bool isEnabled(const Capability cap) @safe {
 		return capsEnabled.canFind(cap);
 	}
 	private void tryCall(string func, T...)(const T params) {
-		import std.traits : hasMember;
-		static if (!__traits(isTemplate, mix)) {
-			if (__traits(getMember, this, func) !is null) {
-				__traits(getMember, this, func)(params);
-			}
-		} else static if(hasMember!(typeof(this), func)) {
+		if (__traits(getMember, this, func) !is null) {
 			__traits(getMember, this, func)(params);
 		}
 	}
-	auto me() const {
+	auto me() const @safe {
 		assert(nickname in internalAddressList);
 		return internalAddressList[nickname];
 	}
@@ -889,7 +860,7 @@ struct IRCClient(alias mix, T) if (isOutputRange!(T, char)) {
 			capAcknowledgementCommon(caps.length);
 		}
 	}
-	private void capAcknowledgementCommon(const size_t count) {
+	private void capAcknowledgementCommon(const size_t count) @safe {
 		capReqCount -= count;
 		tryEndRegistration();
 	}
@@ -916,7 +887,7 @@ struct IRCClient(alias mix, T) if (isOutputRange!(T, char)) {
 			tryCall!"onReceiveCapDel"(cap, metadata);
 		}
 	}
-	private void enableCapability(const Capability cap) {
+	private void enableCapability(const Capability cap) @safe {
 		import virc.keyvaluesplitter : splitKeyValues;
 		import std.conv : to;
 		const capDetails = availableCapabilities[cap.name];
@@ -947,7 +918,7 @@ struct IRCClient(alias mix, T) if (isOutputRange!(T, char)) {
 			default: break;
 		}
 	}
-	private void startSASL() {
+	private void startSASL() @safe {
 		if (supportedSASLMechs.empty && !saslMechs.empty) {
 			autoSelectSASLMech = true;
 			saslAuth(saslMechs.front);
@@ -959,7 +930,7 @@ struct IRCClient(alias mix, T) if (isOutputRange!(T, char)) {
 			}
 		}
 	}
-	private void saslAuth(SASLMechanism mech) {
+	private void saslAuth(SASLMechanism mech) @safe {
 		selectedSASLMech = mech;
 		write!"AUTHENTICATE %s"(mech.name);
 		isAuthenticating = true;
@@ -1061,7 +1032,7 @@ struct IRCClient(alias mix, T) if (isOutputRange!(T, char)) {
 		auto msg = Message(split.front, MessageType.privmsg);
 		recMessageCommon(user, target, msg, metadata);
 	}
-	private void recMessageCommon(const User user, const Target target, Message msg, const MessageMetadata metadata) {
+	private void recMessageCommon(const User user, const Target target, Message msg, const MessageMetadata metadata) @safe {
 		if (user.nickname == nickname) {
 			msg.isEcho = true;
 		}
@@ -1278,7 +1249,7 @@ struct IRCClient(alias mix, T) if (isOutputRange!(T, char)) {
 		internalAddressList.invalidate(user.nickname);
 		tryCall!"onQuit"(user, msg, metadata);
 	}
-	private void recUnknownCommand(const string cmd, const MessageMetadata metadata) {
+	private void recUnknownCommand(const string cmd, const MessageMetadata metadata) @safe {
 		if (cmd.filter!(x => !x.isDigit).empty) {
 			recUnknownNumeric(cmd, metadata);
 		} else {
@@ -1548,7 +1519,7 @@ struct IRCClient(alias mix, T) if (isOutputRange!(T, char)) {
 			tryCall!"onError"(IRCError(ErrorType.malformed), metadata);
 		}
 	}
-	private void recUnknownNumeric(const string cmd, const MessageMetadata metadata) {
+	private void recUnknownNumeric(const string cmd, const MessageMetadata metadata) @safe {
 		tryCall!"onError"(IRCError(ErrorType.unrecognized, cmd), metadata);
 		debug(verboseirc) import std.experimental.logger : trace;
 		debug(verboseirc) trace("Unhandled numeric: ", cast(Numeric)cmd, " ", metadata.original);
@@ -1635,24 +1606,37 @@ version(unittest) {
 		}
 		setupFakeConnection(client);
 	}
+	class Wrapper : Output {
+		import std.array : Appender;
+		Appender!string buffer;
+		override void put(char c) @safe {
+			buffer.put(c);
+		}
+		this(Appender!string buf) @safe {
+			buffer = buf;
+		}
+	}
+	auto data(Output o) @safe {
+		return (cast(Wrapper)o).buffer.data;
+	}
 	auto spawnNoBufferClient(string password = string.init) {
 		auto buffer = appender!(string);
-		return ircClient(buffer, testClientInfo, [], password);
-	}
-	auto spawnNoBufferClient(alias mix)(string password = string.init) {
-		auto buffer = appender!(string);
-		return ircClient!mix(buffer, testClientInfo, [], password);
+		return ircClient(new Wrapper(buffer), testClientInfo, [], password);
 	}
 }
 //Test the basics
 @safe unittest {
-	auto client = spawnNoBufferClient!Test();
+	auto client = spawnNoBufferClient();
+	bool lineReceived;
+	client.onRaw = (_) {
+		lineReceived = true;
+	};
 	client.put("");
-	assert(client.lineReceived == false);
+	assert(lineReceived == false);
 	client.put("\r\n");
-	assert(client.lineReceived == false);
+	assert(lineReceived == false);
 	client.put("hello");
-	assert(client.lineReceived == true);
+	assert(lineReceived == true);
 	assert(!client.isRegistered);
 	client.put(":localhost 001 someone :words");
 	assert(client.isRegistered);
@@ -1660,10 +1644,14 @@ version(unittest) {
 	assert(client.isRegistered);
 }
 //Auto-decoding test
-@system unittest {
-	auto client = spawnNoBufferClient!Test();
+@safe unittest {
+	auto client = spawnNoBufferClient();
+	bool lineReceived;
+	client.onRaw = (_) {
+		lineReceived = true;
+	};
 	client.put("\r\n".representation);
-	assert(client.lineReceived == false);
+	assert(lineReceived == false);
 }
 @safe unittest {
 	import virc.ircv3 : Capability;

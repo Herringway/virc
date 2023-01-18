@@ -16,9 +16,9 @@ auto toUTF8String(Encoding = Latin1String)(const immutable(ubyte)[] raw) {
 	auto utf = cast(string)raw;
 	static if (!is(Encoding == string)) {
 		if (!utf.isValid()) {
-			string fallback;
+			char[] fallback;
 			transcode(cast(Encoding)raw, fallback);
-			return fallback;
+			return fallback.idup;
 		}
 	}
 	return utf;
