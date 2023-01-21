@@ -72,9 +72,9 @@ enum supportedCaps = AliasSeq!(
 +/
 auto ircClient(Output output, NickInfo info, SASLMechanism[] saslMechs = [], string password = string.init) {
 	auto client = IRCClient(output);
-	client.username = info.username;
-	client.realname = info.realname;
-	client.nickname = info.nickname;
+	client.nickinfo.username = info.username;
+	client.nickinfo.realname = info.realname;
+	client.nickinfo.nickname = info.nickname;
 	if (password != string.init) {
 		client.password = password;
 	}
@@ -293,7 +293,7 @@ struct MetadataValue {
 	alias value this;
 }
 
-abstract class Output {
+interface Output {
 	void put(char) @safe;
 }
 
@@ -312,10 +312,8 @@ struct IRCClient {
 	///Channel metadata received so far
 	MetadataValue[string][Channel] channelMetadata;
 
-	private string nickname;
-	private string username;
-	private string realname;
-	private Nullable!string password;
+	NickInfo nickinfo;
+	Nullable!string password;
 	///
 	ChannelState[string] channels;
 
@@ -436,6 +434,10 @@ struct IRCClient {
 		return authenticationSucceeded;
 	}
 
+	void initialize(NickInfo info) @safe {
+		nickinfo = info;
+		initialize();
+	}
 	void initialize() @safe {
 		debug(verboseirc) {
 			import std.experimental.logger : trace;
@@ -749,8 +751,8 @@ struct IRCClient {
 		if (!password.isNull) {
 			pass(password.get);
 		}
-		changeNickname(nickname);
-		user(username, realname);
+		changeNickname(nickinfo.nickname);
+		user(nickinfo.username, nickinfo.realname);
 	}
 	private void write(string fmt, T...)(scope T args) {
 		import std.range : put;
@@ -780,8 +782,8 @@ struct IRCClient {
 		}
 	}
 	auto me() const @safe {
-		assert(nickname in internalAddressList);
-		return internalAddressList[nickname];
+		assert(nickinfo.nickname in internalAddressList);
+		return internalAddressList[nickinfo.nickname];
 	}
 	//Message parsing functions follow
 	private void rec(string cmd : IRCV3Commands.cap)(IRCMessage message, const MessageMetadata metadata) {
@@ -1033,7 +1035,7 @@ struct IRCClient {
 		recMessageCommon(user, target, msg, metadata);
 	}
 	private void recMessageCommon(const User user, const Target target, Message msg, const MessageMetadata metadata) @safe {
-		if (user.nickname == nickname) {
+		if (user.nickname == nickinfo.nickname) {
 			msg.isEcho = true;
 		}
 		tryCall!"onMessage"(user, target, msg, metadata);
@@ -1058,8 +1060,8 @@ struct IRCClient {
 	private void rec(string cmd : Numeric.RPL_WELCOME)(IRCMessage message, const MessageMetadata metadata) {
 		isRegistered = true;
 		auto meUser = User();
-		meUser.mask.nickname = nickname;
-		meUser.mask.ident = username;
+		meUser.mask.nickname = nickinfo.nickname;
+		meUser.mask.ident = nickinfo.username;
 		meUser.mask.host = "127.0.0.1";
 		internalAddressList.update(meUser);
 		tryCall!"onConnect"();
@@ -1216,8 +1218,8 @@ struct IRCClient {
 				}
 			}
 			auto new_ = internalAddressList[newNick];
-			if (old.nickname == nickname) {
-				nickname = new_.nickname;
+			if (old.nickname == nickinfo.nickname) {
+				nickinfo.nickname = new_.nickname;
 			}
 			tryCall!"onNick"(old, new_, metadata);
 		}
@@ -1562,6 +1564,9 @@ struct IRCClient {
 	}
 	private void rec(string cmd : IRCV3Commands.fail)(IRCMessage message, const MessageMetadata metadata) {
 		tryCall!"onError"(IRCError(ErrorType.standardFail, cmd), metadata);
+	}
+	bool isValid() const pure @safe {
+		return !invalid;
 	}
 }
 version(unittest) {
