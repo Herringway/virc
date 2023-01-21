@@ -411,27 +411,28 @@ struct IRCClient {
 	///
 	debug void delegate(const string) @safe onSend;
 
-
-	private bool invalid = true;
-	private bool isRegistered;
-	private ulong capReqCount = 0;
-	private BatchProcessor batchProcessor;
-	private bool isAuthenticating;
-	private bool authenticationSucceeded;
-	private string[] supportedSASLMechs;
-	private SASLMechanism selectedSASLMech;
-	private bool autoSelectSASLMech;
-	private string receivedSASLAuthenticationText;
-	private bool _isAway;
-	private ulong maxMetadataSubscriptions;
-	private ulong maxMetadataSelfKeys;
-	private const(string)[] metadataSubscribedKeys;
-	private Capability[string] availableCapabilities;
-
-	private WhoisResponse[string] whoisCache;
+	static struct ClientState {
+		bool invalid = true;
+		bool isRegistered;
+		ulong capReqCount = 0;
+		BatchProcessor batchProcessor;
+		bool isAuthenticating;
+		bool authenticationSucceeded;
+		string[] supportedSASLMechs;
+		SASLMechanism selectedSASLMech;
+		bool autoSelectSASLMech;
+		string receivedSASLAuthenticationText;
+		bool _isAway;
+		ulong maxMetadataSubscriptions;
+		ulong maxMetadataSelfKeys;
+		const(string)[] metadataSubscribedKeys;
+		Capability[string] availableCapabilities;
+		WhoisResponse[string] whoisCache;
+	}
+	private ClientState state;
 
 	bool isAuthenticated() @safe {
-		return authenticationSucceeded;
+		return state.authenticationSucceeded;
 	}
 
 	void initialize(NickInfo info) @safe {
@@ -443,7 +444,8 @@ struct IRCClient {
 			import std.experimental.logger : trace;
 			trace("-------------------------");
 		}
-		invalid = false;
+		state = state.init;
+		state.invalid = false;
 		write("CAP LS 302");
 		register();
 	}
@@ -471,13 +473,13 @@ struct IRCClient {
 		//Chops off terminating \r\n. Everything after is ignored, according to spec.
 		line = findSplitBefore(line, "\r\n")[0];
 		debug(verboseirc) trace("←: ", line);
-		assert(!invalid, "Received data after invalidation");
+		assert(isValid, "Received data after invalidation");
 		if (line.empty) {
 			return;
 		}
-		batchProcessor.put(line);
-		foreach (batch; batchProcessor) {
-			batchProcessor.popFront();
+		state.batchProcessor.put(line);
+		foreach (batch; state.batchProcessor) {
+			state.batchProcessor.popFront();
 			foreach (parsed; batch.lines) {
 				auto metadata = MessageMetadata();
 				metadata.batch = parsed.batch;
@@ -526,12 +528,12 @@ struct IRCClient {
 		put(rawString.toUTF8String);
 	}
 	private void tryEndRegistration() @safe {
-		if (capReqCount == 0 && !isAuthenticating && !isRegistered) {
+		if (state.capReqCount == 0 && !state.isAuthenticating && !state.isRegistered) {
 			endRegistration();
 		}
 	}
 	private void endAuthentication() @safe {
-		isAuthenticating = false;
+		state.isAuthenticating = false;
 		tryEndRegistration();
 	}
 	private void endRegistration() @safe {
@@ -573,14 +575,14 @@ struct IRCClient {
 		writeList!("MONITOR - ", ",")(users.map!(x => x.nickname));
 	}
 	public bool isAway() const @safe {
-		return _isAway;
+		return state._isAway;
 	}
 	public bool monitorIsEnabled() @safe {
 		return capsEnabled.canFind("MONITOR");
 	}
 	public void quit(const string msg) @safe {
 		write!"QUIT :%s"(msg);
-		invalid = true;
+		state = state.init;
 	}
 	public void changeNickname(const string nick) @safe {
 		write!"NICK %s"(nick);
@@ -720,7 +722,7 @@ struct IRCClient {
 		write!"METADATA * CLEAR"();
 	}
 	public bool isSubscribed(const string key) @safe {
-		return metadataSubscribedKeys.canFind(key);
+		return state.metadataSubscribedKeys.canFind(key);
 	}
 	private void sendAuthenticatePayload(const string payload) @safe {
 		import std.base64 : Base64;
@@ -747,7 +749,7 @@ struct IRCClient {
 		write!"PASS :%s"(pass);
 	}
 	private void register() @safe {
-		assert(!isRegistered);
+		assert(!state.isRegistered);
 		if (!password.isNull) {
 			pass(password.get);
 		}
@@ -821,18 +823,18 @@ struct IRCClient {
 	}
 	private void recCapLS(T)(T caps, const MessageMetadata metadata) if (is(ElementType!T == Capability)) {
 		auto requestCaps = caps.filter!(among!supportedCaps);
-		capReqCount += requestCaps.save().walkLength;
+		state.capReqCount += requestCaps.save().walkLength;
 		if (!requestCaps.empty) {
 			write!"CAP REQ :%-(%s %)"(requestCaps);
 		}
 		foreach (ref cap; caps) {
-			availableCapabilities[cap.name] = cap;
+			state.availableCapabilities[cap.name] = cap;
 			tryCall!"onReceiveCapLS"(cap, metadata);
 		}
 	}
 	private void recCapList(T)(T caps, const MessageMetadata metadata) if (is(ElementType!T == Capability)) {
 		foreach (ref cap; caps) {
-			availableCapabilities[cap.name] = cap;
+			state.availableCapabilities[cap.name] = cap;
 			tryCall!"onReceiveCapList"(cap, metadata);
 		}
 	}
@@ -841,7 +843,7 @@ struct IRCClient {
 		capsEnabled ~= caps.save().array;
 		foreach (ref cap; caps) {
 			enableCapability(cap);
-			tryCall!"onReceiveCapAck"(availableCapabilities[cap.name], metadata);
+			tryCall!"onReceiveCapAck"(state.availableCapabilities[cap.name], metadata);
 			static if (!hasLength!T) {
 				capAcknowledgementCommon(1);
 			}
@@ -853,7 +855,7 @@ struct IRCClient {
 	private void recCapNak(T)(T caps, const MessageMetadata metadata) if (is(ElementType!T == Capability)) {
 		import std.range : hasLength;
 		foreach (ref cap; caps) {
-			tryCall!"onReceiveCapNak"(availableCapabilities[cap.name], metadata);
+			tryCall!"onReceiveCapNak"(state.availableCapabilities[cap.name], metadata);
 			static if (!hasLength!T) {
 				capAcknowledgementCommon(1);
 			}
@@ -863,17 +865,17 @@ struct IRCClient {
 		}
 	}
 	private void capAcknowledgementCommon(const size_t count) @safe {
-		capReqCount -= count;
+		state.capReqCount -= count;
 		tryEndRegistration();
 	}
 	private void recCapNew(T)(T caps, const MessageMetadata metadata) if (is(ElementType!T == Capability)) {
 		auto requestCaps = caps.filter!(among!supportedCaps);
-		capReqCount += requestCaps.save().walkLength;
+		state.capReqCount += requestCaps.save().walkLength;
 		if (!requestCaps.empty) {
 			write!"CAP REQ :%-(%s %)"(requestCaps);
 		}
 		foreach (ref cap; caps) {
-			availableCapabilities[cap.name] = cap;
+			state.availableCapabilities[cap.name] = cap;
 			tryCall!"onReceiveCapNew"(cap, metadata);
 		}
 	}
@@ -881,7 +883,7 @@ struct IRCClient {
 		import std.algorithm.mutation : remove;
 		import std.algorithm.searching : countUntil;
 		foreach (ref cap; caps) {
-			availableCapabilities.remove(cap.name);
+			state.availableCapabilities.remove(cap.name);
 			auto findCap = countUntil(capsEnabled, cap);
 			if (findCap > -1) {
 				capsEnabled = capsEnabled.remove(findCap);
@@ -892,25 +894,25 @@ struct IRCClient {
 	private void enableCapability(const Capability cap) @safe {
 		import virc.keyvaluesplitter : splitKeyValues;
 		import std.conv : to;
-		const capDetails = availableCapabilities[cap.name];
+		const capDetails = state.availableCapabilities[cap.name];
 		switch (cap.name) {
 			case "sasl":
-				supportedSASLMechs = capDetails.value.splitter(",").array;
+				state.supportedSASLMechs = capDetails.value.splitter(",").array;
 				startSASL();
 				break;
 			case "draft/metadata-2":
-				maxMetadataSubscriptions = ulong.max;
-				maxMetadataSelfKeys = ulong.max;
+				state.maxMetadataSubscriptions = ulong.max;
+				state.maxMetadataSelfKeys = ulong.max;
 				foreach (kv; capDetails.value.splitKeyValues) {
 					switch (kv.key) {
 						case "maxsub":
 							if (!kv.value.isNull) {
-								maxMetadataSubscriptions = kv.value.get.to!ulong;
+								state.maxMetadataSubscriptions = kv.value.get.to!ulong;
 							}
 							break;
 						case "maxkey":
 							if (!kv.value.isNull) {
-								maxMetadataSelfKeys = kv.value.get.to!ulong;
+								state.maxMetadataSelfKeys = kv.value.get.to!ulong;
 							}
 							break;
 						default: break;
@@ -921,21 +923,21 @@ struct IRCClient {
 		}
 	}
 	private void startSASL() @safe {
-		if (supportedSASLMechs.empty && !saslMechs.empty) {
-			autoSelectSASLMech = true;
+		if (state.supportedSASLMechs.empty && !saslMechs.empty) {
+			state.autoSelectSASLMech = true;
 			saslAuth(saslMechs.front);
-		} else if (!supportedSASLMechs.empty && !saslMechs.empty) {
+		} else if (!state.supportedSASLMechs.empty && !saslMechs.empty) {
 			foreach (id, mech; saslMechs) {
-				if (supportedSASLMechs.canFind(mech.name)) {
+				if (state.supportedSASLMechs.canFind(mech.name)) {
 					saslAuth(mech);
 				}
 			}
 		}
 	}
 	private void saslAuth(SASLMechanism mech) @safe {
-		selectedSASLMech = mech;
+		state.selectedSASLMech = mech;
 		write!"AUTHENTICATE %s"(mech.name);
-		isAuthenticating = true;
+		state.isAuthenticating = true;
 	}
 	private void rec(string cmd : RFC1459Commands.kick)(IRCMessage message, const MessageMetadata metadata) {
 		auto split = message.args;
@@ -1058,7 +1060,7 @@ struct IRCClient {
 		parseNumeric!(Numeric.RPL_ISUPPORT)(split, server.iSupport);
 	}
 	private void rec(string cmd : Numeric.RPL_WELCOME)(IRCMessage message, const MessageMetadata metadata) {
-		isRegistered = true;
+		state.isRegistered = true;
 		auto meUser = User();
 		meUser.mask.nickname = nickinfo.nickname;
 		meUser.mask.ident = nickinfo.username;
@@ -1068,7 +1070,7 @@ struct IRCClient {
 	}
 	private void rec(string cmd : Numeric.RPL_LOGGEDIN)(IRCMessage message, const MessageMetadata metadata) {
 		import virc.numerics.sasl : parseNumeric;
-		if (isAuthenticating || isAuthenticated) {
+		if (state.isAuthenticating || isAuthenticated) {
 			auto parsed = parseNumeric!(Numeric.RPL_LOGGEDIN)(message.args);
 			auto user = User(parsed.get.mask);
 			user.account = parsed.get.account;
@@ -1100,8 +1102,8 @@ struct IRCClient {
 		tryCall!"onError"(IRCError(ErrorType.noMOTD), metadata);
 	}
 	private void rec(string cmd : Numeric.RPL_SASLSUCCESS)(IRCMessage message, const MessageMetadata metadata) {
-		if (selectedSASLMech) {
-			authenticationSucceeded = true;
+		if (state.selectedSASLMech) {
+			state.authenticationSucceeded = true;
 		}
 		endAuthentication();
 	}
@@ -1178,11 +1180,11 @@ struct IRCClient {
 	}
 	private void rec(string cmd : Numeric.RPL_UNAWAY)(IRCMessage message, const MessageMetadata metadata) {
 		tryCall!"onUnAwayReply"(message.sourceUser.get, metadata);
-		_isAway = false;
+		state._isAway = false;
 	}
 	private void rec(string cmd : Numeric.RPL_NOWAWAY)(IRCMessage message, const MessageMetadata metadata) {
 		tryCall!"onAwayReply"(message.sourceUser.get, metadata);
-		_isAway = true;
+		state._isAway = true;
 	}
 	private void rec(string cmd : Numeric.RPL_TOPIC)(IRCMessage message, const MessageMetadata metadata) {
 		auto reply = parseNumeric!(Numeric.RPL_TOPIC)(message.args);
@@ -1299,9 +1301,9 @@ struct IRCClient {
 	private void rec(string cmd : Numeric.RPL_ENDOFWHOIS)(IRCMessage message, const MessageMetadata metadata) {
 		auto reply = parseNumeric!(Numeric.RPL_ENDOFWHOIS)(message.args);
 		if (!reply.isNull) {
-			if (reply.get.user.nickname in whoisCache) {
-				tryCall!"onWhois"(reply.get.user, whoisCache[reply.get.user.nickname]);
-				whoisCache.remove(reply.get.user.nickname);
+			if (reply.get.user.nickname in state.whoisCache) {
+				tryCall!"onWhois"(reply.get.user, state.whoisCache[reply.get.user.nickname]);
+				state.whoisCache.remove(reply.get.user.nickname);
 			} else {
 				tryCall!"onError"(IRCError(ErrorType.unexpected, "empty WHOIS data returned"), metadata);
 			}
@@ -1312,12 +1314,12 @@ struct IRCClient {
 	private void rec(string cmd : Numeric.RPL_WHOISUSER)(IRCMessage message, const MessageMetadata metadata) {
 		auto reply = parseNumeric!(Numeric.RPL_WHOISUSER)(message.args);
 		if (!reply.isNull) {
-			if (reply.get.user.nickname !in whoisCache) {
-				whoisCache[reply.get.user.nickname] = WhoisResponse();
+			if (reply.get.user.nickname !in state.whoisCache) {
+				state.whoisCache[reply.get.user.nickname] = WhoisResponse();
 			}
-			whoisCache[reply.get.user.nickname].username = reply.get.username;
-			whoisCache[reply.get.user.nickname].hostname = reply.get.hostname;
-			whoisCache[reply.get.user.nickname].realname = reply.get.realname;
+			state.whoisCache[reply.get.user.nickname].username = reply.get.username;
+			state.whoisCache[reply.get.user.nickname].hostname = reply.get.hostname;
+			state.whoisCache[reply.get.user.nickname].realname = reply.get.realname;
 		} else {
 			tryCall!"onError"(IRCError(ErrorType.malformed), metadata);
 		}
@@ -1325,10 +1327,10 @@ struct IRCClient {
 	private void rec(string cmd : Numeric.RPL_WHOISSECURE)(IRCMessage message, const MessageMetadata metadata) {
 		auto reply = parseNumeric!(Numeric.RPL_WHOISSECURE)(message.args);
 		if (!reply.isNull) {
-			if (reply.get.user.nickname !in whoisCache) {
-				whoisCache[reply.get.user.nickname] = WhoisResponse();
+			if (reply.get.user.nickname !in state.whoisCache) {
+				state.whoisCache[reply.get.user.nickname] = WhoisResponse();
 			}
-			whoisCache[reply.get.user.nickname].isSecure = true;
+			state.whoisCache[reply.get.user.nickname].isSecure = true;
 		} else {
 			tryCall!"onError"(IRCError(ErrorType.malformed), metadata);
 		}
@@ -1336,10 +1338,10 @@ struct IRCClient {
 	private void rec(string cmd : Numeric.RPL_WHOISOPERATOR)(IRCMessage message, const MessageMetadata metadata) {
 		auto reply = parseNumeric!(Numeric.RPL_WHOISOPERATOR)(message.args);
 		if (!reply.isNull) {
-			if (reply.get.user.nickname !in whoisCache) {
-				whoisCache[reply.get.user.nickname] = WhoisResponse();
+			if (reply.get.user.nickname !in state.whoisCache) {
+				state.whoisCache[reply.get.user.nickname] = WhoisResponse();
 			}
-			whoisCache[reply.get.user.nickname].isOper = true;
+			state.whoisCache[reply.get.user.nickname].isOper = true;
 		} else {
 			tryCall!"onError"(IRCError(ErrorType.malformed), metadata);
 		}
@@ -1347,10 +1349,10 @@ struct IRCClient {
 	private void rec(string cmd : Numeric.RPL_WHOISREGNICK)(IRCMessage message, const MessageMetadata metadata) {
 		auto reply = parseNumeric!(Numeric.RPL_WHOISREGNICK)(message.args);
 		if (!reply.isNull) {
-			if (reply.get.user.nickname !in whoisCache) {
-				whoisCache[reply.get.user.nickname] = WhoisResponse();
+			if (reply.get.user.nickname !in state.whoisCache) {
+				state.whoisCache[reply.get.user.nickname] = WhoisResponse();
 			}
-			whoisCache[reply.get.user.nickname].isRegistered = true;
+			state.whoisCache[reply.get.user.nickname].isRegistered = true;
 		} else {
 			tryCall!"onError"(IRCError(ErrorType.malformed), metadata);
 		}
@@ -1358,11 +1360,11 @@ struct IRCClient {
 	private void rec(string cmd : Numeric.RPL_WHOISIDLE)(IRCMessage message, const MessageMetadata metadata) {
 		auto reply = parseNumeric!(Numeric.RPL_WHOISIDLE)(message.args);
 		if (!reply.isNull) {
-			if (reply.user.get.nickname !in whoisCache) {
-				whoisCache[reply.user.get.nickname] = WhoisResponse();
+			if (reply.user.get.nickname !in state.whoisCache) {
+				state.whoisCache[reply.user.get.nickname] = WhoisResponse();
 			}
-			whoisCache[reply.user.get.nickname].idleTime = reply.idleTime;
-			whoisCache[reply.user.get.nickname].connectedTime = reply.connectedTime;
+			state.whoisCache[reply.user.get.nickname].idleTime = reply.idleTime;
+			state.whoisCache[reply.user.get.nickname].connectedTime = reply.connectedTime;
 		} else {
 			tryCall!"onError"(IRCError(ErrorType.malformed), metadata);
 		}
@@ -1370,10 +1372,10 @@ struct IRCClient {
 	private void rec(string cmd : Numeric.RPL_WHOISSERVER)(IRCMessage message, const MessageMetadata metadata) {
 		auto reply = parseNumeric!(Numeric.RPL_WHOISSERVER)(message.args);
 		if (!reply.isNull) {
-			if (reply.get.user.nickname !in whoisCache) {
-				whoisCache[reply.get.user.nickname] = WhoisResponse();
+			if (reply.get.user.nickname !in state.whoisCache) {
+				state.whoisCache[reply.get.user.nickname] = WhoisResponse();
 			}
-			whoisCache[reply.get.user.nickname].connectedTo = reply.get.server;
+			state.whoisCache[reply.get.user.nickname].connectedTo = reply.get.server;
 		} else {
 			tryCall!"onError"(IRCError(ErrorType.malformed), metadata);
 		}
@@ -1381,10 +1383,10 @@ struct IRCClient {
 	private void rec(string cmd : Numeric.RPL_WHOISACCOUNT)(IRCMessage message, const MessageMetadata metadata) {
 		auto reply = parseNumeric!(Numeric.RPL_WHOISACCOUNT)(message.args);
 		if (!reply.isNull) {
-			if (reply.get.user.nickname !in whoisCache) {
-				whoisCache[reply.get.user.nickname] = WhoisResponse();
+			if (reply.get.user.nickname !in state.whoisCache) {
+				state.whoisCache[reply.get.user.nickname] = WhoisResponse();
 			}
-			whoisCache[reply.get.user.nickname].account = reply.get.account;
+			state.whoisCache[reply.get.user.nickname].account = reply.get.account;
 		} else {
 			tryCall!"onError"(IRCError(ErrorType.malformed), metadata);
 		}
@@ -1455,8 +1457,8 @@ struct IRCClient {
 		auto parsed = parseNumeric!(Numeric.RPL_METADATASUBOK)(message.args);
 		if (!parsed.isNull) {
 			foreach (sub; parsed.get.subs) {
-				if (!metadataSubscribedKeys.canFind(sub)) {
-					metadataSubscribedKeys ~= sub;
+				if (!state.metadataSubscribedKeys.canFind(sub)) {
+					state.metadataSubscribedKeys ~= sub;
 				}
 			}
 		} else {
@@ -1466,7 +1468,7 @@ struct IRCClient {
 	private void rec(string cmd : Numeric.RPL_METADATAUNSUBOK)(IRCMessage message, const MessageMetadata metadata) {
 		auto parsed = parseNumeric!(Numeric.RPL_METADATAUNSUBOK)(message.args);
 		if (!parsed.isNull) {
-			metadataSubscribedKeys = metadataSubscribedKeys.filter!(x => !parsed.get.subs.canFind(x)).array;
+			state.metadataSubscribedKeys = state.metadataSubscribedKeys.filter!(x => !parsed.get.subs.canFind(x)).array;
 		} else {
 			tryCall!"onError"(IRCError(ErrorType.malformed), metadata);
 		}
@@ -1506,8 +1508,8 @@ struct IRCClient {
 		}
 		auto reply = parseNumeric!(Numeric.RPL_WHOISCHANNELS)(message.args, prefixes, server.iSupport.channelTypes);
 		if (!reply.isNull) {
-			if (reply.get.user.nickname !in whoisCache) {
-				whoisCache[reply.get.user.nickname] = WhoisResponse();
+			if (reply.get.user.nickname !in state.whoisCache) {
+				state.whoisCache[reply.get.user.nickname] = WhoisResponse();
 			}
 			foreach (channel; reply.get.channels) {
 				auto whoisChannel = WhoisChannel();
@@ -1515,7 +1517,7 @@ struct IRCClient {
 				if (!channel.prefix.isNull) {
 					whoisChannel.prefix = channel.prefix.get;
 				}
-				whoisCache[reply.get.user.nickname].channels[channel.channel.name] = whoisChannel;
+				state.whoisCache[reply.get.user.nickname].channels[channel.channel.name] = whoisChannel;
 			}
 		} else {
 			tryCall!"onError"(IRCError(ErrorType.malformed), metadata);
@@ -1545,17 +1547,17 @@ struct IRCClient {
 		import std.base64 : Base64;
 		auto split = message.args;
 		if (split.front != "+") {
-			receivedSASLAuthenticationText ~= Base64.decode(split.front);
+			state.receivedSASLAuthenticationText ~= Base64.decode(split.front);
 		}
-		if ((selectedSASLMech) && (split.front == "+" || (split.front.length < 400))) {
-			selectedSASLMech.put(receivedSASLAuthenticationText);
-			if (selectedSASLMech.empty) {
+		if ((state.selectedSASLMech) && (split.front == "+" || (split.front.length < 400))) {
+			state.selectedSASLMech.put(state.receivedSASLAuthenticationText);
+			if (state.selectedSASLMech.empty) {
 				sendAuthenticatePayload("");
 			} else {
-				sendAuthenticatePayload(selectedSASLMech.front);
-				selectedSASLMech.popFront();
+				sendAuthenticatePayload(state.selectedSASLMech.front);
+				state.selectedSASLMech.popFront();
 			}
-			receivedSASLAuthenticationText = [];
+			state.receivedSASLAuthenticationText = [];
 		}
 	}
 	private void rec(string cmd : IRCV3Commands.note)(IRCMessage message, const MessageMetadata metadata) {
@@ -1566,7 +1568,7 @@ struct IRCClient {
 		tryCall!"onError"(IRCError(ErrorType.standardFail, cmd), metadata);
 	}
 	bool isValid() const pure @safe {
-		return !invalid;
+		return !state.invalid;
 	}
 }
 version(unittest) {
@@ -1598,7 +1600,7 @@ version(unittest) {
 		client.put(":localhost 005 someone AWAYLEN=200 CALLERID=g CASEMAPPING=rfc1459 CHANMODES=IYbeg,k,FJLfjl,ABCDGKMNOPQRSTcimnprstuz CHANNELLEN=31 CHANTYPES=# CHARSET=ascii ELIST=MU ESILENCE EXCEPTS=e EXTBAN=,ABCNOQRSTUcjmprsz FNC INVEX=I :are supported by this server");
 		client.put(":localhost 005 someone KICKLEN=255 MAP MAXBANS=60 MAXCHANNELS=25 MAXPARA=32 MAXTARGETS=20 MODES=10 NAMESX NETWORK=TestNet NICKLEN=31 OPERLOG OVERRIDE PREFIX=(qaohv)~&@%+ :are supported by this server");
 		client.put(":localhost 005 someone REMOVE SECURELIST SILENCE=32 SSL=[::]:6697 STARTTLS STATUSMSG=~&@%+ TOPICLEN=307 UHNAMES USERIP VBANLIST WALLCHOPS WALLVOICES WATCH=1000 :are supported by this server");
-		assert(client.isRegistered);
+		assert(client.state.isRegistered);
 		assert(client.server.iSupport.userhostsInNames == true);
 	}
 	void initializeCaps(T)(ref T client) {
@@ -1642,11 +1644,11 @@ version(unittest) {
 	assert(lineReceived == false);
 	client.put("hello");
 	assert(lineReceived == true);
-	assert(!client.isRegistered);
+	assert(!client.state.isRegistered);
 	client.put(":localhost 001 someone :words");
-	assert(client.isRegistered);
+	assert(client.state.isRegistered);
 	client.put(":localhost 001 someone :words");
-	assert(client.isRegistered);
+	assert(client.state.isRegistered);
 }
 //Auto-decoding test
 @safe unittest {
@@ -1987,7 +1989,7 @@ version(unittest) {
 		auto client = spawnNoBufferClient();
 		put(client, ":localhost CAP * LS * : ");
 		setupFakeConnection(client);
-		assert(client.isRegistered);
+		assert(client.state.isRegistered);
 	}
 	{ //example taken from RFC2812, section 3.2.2
 		auto client = spawnNoBufferClient();
@@ -2135,7 +2137,7 @@ version(unittest) {
 		client.quit("I'm out");
 		auto lineByLine = client.output.data.lineSplitter();
 		assert(lineByLine.array[$-1] == "QUIT :I'm out");
-		assert(client.invalid);
+		assert(!client.isValid);
 		assertThrown!AssertError(client.put("PING :hahahaha"));
 	}
 }
@@ -2988,8 +2990,8 @@ version(unittest) {
 		initializeWithCaps(client, [Capability("draft/metadata-2", "foo,maxsub=50,maxkey=25,bar"), Capability("draft/metadata-notify-2")]);
 
 
-		assert(client.maxMetadataSubscriptions == 50);
-		assert(client.maxMetadataSelfKeys == 25);
+		assert(client.state.maxMetadataSubscriptions == 50);
+		assert(client.state.maxMetadataSelfKeys == 25);
 
 		client.setMetadata("url", "http://www.example.com");
 		assert(client.output.data.lineSplitter().array[$-1] == "METADATA * SET url :http://www.example.com");
@@ -3168,7 +3170,7 @@ version(unittest) {
 		}
 
 		// uh oh zone
-		client.metadataSubscribedKeys = [];
+		client.state.metadataSubscribedKeys = [];
 		client.subscribeMetadata("website", "avatar", "foo", "bar", "baz");
 		client.put(":irc.example.com 770 modernclient :website avatar foo bar baz");
 		client.subscribeMetadata("email", "city");
@@ -3187,7 +3189,7 @@ version(unittest) {
 		assert(!client.isSubscribed("email"));
 		assert(!client.isSubscribed("city"));
 
-		client.metadataSubscribedKeys = [];
+		client.state.metadataSubscribedKeys = [];
 		client.subscribeMetadata("website", "avatar", "foo");
 		client.put(":irc.example.com 770 modernclient :website avatar foo");
 		client.subscribeMetadata("email", "city", "country", "bar", "baz");
@@ -3208,7 +3210,7 @@ version(unittest) {
 		assert(!client.isSubscribed("bar"));
 		assert(!client.isSubscribed("baz"));
 
-		client.metadataSubscribedKeys = [];
+		client.state.metadataSubscribedKeys = [];
 		client.subscribeMetadata("avatar", "website");
 		client.put(":irc.example.com 770 modernclient :avatar website");
 		client.subscribeMetadata("foo", "avatar", "website");
@@ -3227,7 +3229,7 @@ version(unittest) {
 		assert(!client.isSubscribed("bar"));
 		assert(!client.isSubscribed("baz"));
 
-		client.metadataSubscribedKeys = [];
+		client.state.metadataSubscribedKeys = [];
 		client.subscribeMetadata("website", "avatar", "foo", "bar", "baz");
 		client.put(":irc.example.com 770 modernclient :website avatar foo bar baz");
 		client.listSubscribedMetadata();
@@ -3238,7 +3240,7 @@ version(unittest) {
 		assert(client.isSubscribed("bar"));
 		assert(client.isSubscribed("baz"));
 
-		client.metadataSubscribedKeys = [];
+		client.state.metadataSubscribedKeys = [];
 		client.subscribeMetadata("website", "avatar", "foo", "bar", "baz");
 		client.put(":irc.example.com 770 modernclient :website avatar foo bar baz");
 		client.listSubscribedMetadata();
@@ -3251,10 +3253,10 @@ version(unittest) {
 		assert(client.isSubscribed("bar"));
 		assert(client.isSubscribed("baz"));
 
-		client.metadataSubscribedKeys = [];
+		client.state.metadataSubscribedKeys = [];
 		client.listSubscribedMetadata();
 
-		client.metadataSubscribedKeys = [];
+		client.state.metadataSubscribedKeys = [];
 		client.subscribeMetadata("website", "avatar", "foo", "bar", "baz");
 		client.put(":irc.example.com 770 modernclient :website avatar foo bar baz");
 		client.listSubscribedMetadata();
@@ -3266,7 +3268,7 @@ version(unittest) {
 		assert(client.isSubscribed("avatar"));
 		assert(client.isSubscribed("website"));
 
-		client.metadataSubscribedKeys = [];
+		client.state.metadataSubscribedKeys = [];
 		client.subscribeMetadata("website", "avatar", "foo", "bar", "baz");
 		client.put(":irc.example.com 770 modernclient :website avatar foo bar baz");
 		client.listSubscribedMetadata();
@@ -3281,21 +3283,21 @@ version(unittest) {
 		assert(client.isSubscribed("bar"));
 		assert(client.isSubscribed("baz"));
 
-		client.metadataSubscribedKeys = [];
+		client.state.metadataSubscribedKeys = [];
 		client.subscribeMetadata("avatar", "avatar");
 		client.put(":irc.example.com 770 modernclient :avatar");
 		client.listSubscribedMetadata();
 		client.put(":irc.example.com 772 modernclient :avatar");
 		assert(client.isSubscribed("avatar"));
 
-		client.metadataSubscribedKeys = [];
+		client.state.metadataSubscribedKeys = [];
 		client.subscribeMetadata("avatar", "avatar");
 		client.put(":irc.example.com 770 modernclient :avatar avatar");
 		client.listSubscribedMetadata();
 		client.put(":irc.example.com 772 modernclient :avatar");
 		assert(client.isSubscribed("avatar"));
 
-		client.metadataSubscribedKeys = [];
+		client.state.metadataSubscribedKeys = [];
 		client.listSubscribedMetadata();
 		client.unsubscribeMetadata("website");
 		client.put(":irc.example.com 771 modernclient :website");
@@ -3307,21 +3309,21 @@ version(unittest) {
 		client.put(":irc.example.com 772 modernclient :website");
 		assert(client.isSubscribed("website"));
 
-		client.metadataSubscribedKeys = [];
+		client.state.metadataSubscribedKeys = [];
 		client.listSubscribedMetadata();
 		client.put(":irc.example.com 772 modernclient :website");
 		client.unsubscribeMetadata("website", "website");
 		client.put(":irc.example.com 771 modernclient :website");
 		assert(!client.isSubscribed("website"));
 
-		client.metadataSubscribedKeys = [];
+		client.state.metadataSubscribedKeys = [];
 		client.listSubscribedMetadata();
 		client.put(":irc.example.com 772 modernclient :website");
 		client.unsubscribeMetadata("website", "website");
 		client.put(":irc.example.com 771 modernclient :website website");
 		assert(!client.isSubscribed("website"));
 
-		client.metadataSubscribedKeys = [];
+		client.state.metadataSubscribedKeys = [];
 		client.subscribeMetadata("avatar", "secretkey", "website");
 		client.put("FAIL METADATA KEY_NO_PERMISSION secretkey modernclient :You do not have permission to do that.");
 		client.put(":irc.example.com 770 modernclient :avatar website");
@@ -3335,7 +3337,7 @@ version(unittest) {
 			assert(type == ErrorType.standardFail);
 		}
 
-		client.metadataSubscribedKeys = [];
+		client.state.metadataSubscribedKeys = [];
 		client.subscribeMetadata("$invalid1", "secretkey1", "$invalid2", "secretkey2", "website");
 		client.put("FAIL METADATA KEY_NO_PERMISSION secretkey1 modernclient :You do not have permission to do that.");
 		client.put("FAIL METADATA KEY_INVALID $invalid1 modernclient :Invalid key");
