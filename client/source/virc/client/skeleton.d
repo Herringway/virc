@@ -440,10 +440,6 @@ struct IRCClient {
 		initialize();
 	}
 	void initialize() @safe {
-		debug(verboseirc) {
-			import std.experimental.logger : trace;
-			trace("-------------------------");
-		}
 		state = state.init;
 		state.invalid = false;
 		write("CAP LS 302");
