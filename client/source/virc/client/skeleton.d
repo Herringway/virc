@@ -1563,7 +1563,7 @@ struct IRCClient {
 	private void rec(string cmd : IRCV3Commands.fail)(IRCMessage message, const MessageMetadata metadata) {
 		tryCall!"onError"(IRCError(ErrorType.standardFail, cmd), metadata);
 	}
-	bool isValid() const pure @safe {
+	bool isValid() const pure @safe nothrow {
 		return !state.invalid;
 	}
 }
