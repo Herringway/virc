@@ -2242,6 +2242,7 @@ version(unittest) {
 		client.quit("I'm out");
 		auto lineByLine = client.output.data.lineSplitter();
 		assert(lineByLine.array[$-1] == "QUIT :I'm out");
+		client.put(":"~testUser.nickname~" QUIT");
 		assert(!client.isValid);
 		assertThrown!AssertError(client.put("PING :hahahaha"));
 	}
