@@ -420,7 +420,7 @@ struct IRCClient {
 	///
 	void delegate() @safe onConnect;
 	/// Called whenever a channel user list is updated
-	void delegate(const User, const Channel, ChannelListUpdateType) @safe onChannelListUpdate;
+	void delegate(const User, const User, const Channel, ChannelListUpdateType) @safe onChannelListUpdate;
 	///
 	debug void delegate(const string) @safe onSend;
 
@@ -981,7 +981,7 @@ struct IRCClient {
 			msg = split.front;
 		}
 
-		tryCall!"onChannelListUpdate"(victim, channel, ChannelListUpdateType.removed);
+		tryCall!"onChannelListUpdate"(victim, victim, channel, ChannelListUpdateType.removed);
 		tryCall!"onKick"(source, channel, victim, msg, metadata);
 	}
 	private void rec(string cmd : RFC1459Commands.wallops)(IRCMessage message, const MessageMetadata metadata) {
@@ -1026,7 +1026,7 @@ struct IRCClient {
 		if (source.nickname in internalAddressList) {
 			channels[channel.name].users.update(internalAddressList[source.nickname]);
 		}
-		tryCall!"onChannelListUpdate"(source, channel, ChannelListUpdateType.added);
+		tryCall!"onChannelListUpdate"(source, source, channel, ChannelListUpdateType.added);
 		tryCall!"onJoin"(source, channel, metadata);
 	}
 	private void rec(string cmd : RFC1459Commands.part)(IRCMessage message, const MessageMetadata metadata) {
@@ -1046,7 +1046,7 @@ struct IRCClient {
 		if ((user == me) && (channel.name in channels)) {
 			channels.remove(channel.name);
 		}
-		tryCall!"onChannelListUpdate"(user, channel, ChannelListUpdateType.removed);
+		tryCall!"onChannelListUpdate"(user, user, channel, ChannelListUpdateType.removed);
 		tryCall!"onPart"(user, channel, msg, metadata);
 	}
 	private void rec(string cmd : RFC1459Commands.notice)(IRCMessage message, const MessageMetadata metadata) {
@@ -1284,7 +1284,7 @@ struct IRCClient {
 		}
 		foreach (ref channel; channels) {
 			if (user.nickname in channel.users) {
-				tryCall!"onChannelListUpdate"(user, channel.channel, ChannelListUpdateType.added);
+				tryCall!"onChannelListUpdate"(user, user, channel.channel, ChannelListUpdateType.added);
 			}
 		}
 		if (isMe(user)) {
@@ -1312,7 +1312,7 @@ struct IRCClient {
 				const newUser = User(user.name);
 				channels[reply.get.channel].users.update(newUser);
 				if (newUser != me) {
-					tryCall!"onChannelListUpdate"(newUser, Channel(reply.get.channel), ChannelListUpdateType.added);
+					tryCall!"onChannelListUpdate"(newUser, newUser, Channel(reply.get.channel), ChannelListUpdateType.added);
 				}
 			}
 		}
@@ -1329,10 +1329,11 @@ struct IRCClient {
 			user.mask.ident = reply.get.ident;
 			user.mask.host = reply.get.host;
 			user.mask.nickname = reply.get.nick.get;
+			auto oldUser = internalAddressList[user.mask.nickname];
 			internalAddressList.update(user);
 			foreach (ref channel; channels) {
 				if (user.nickname in channel.users) {
-					tryCall!"onChannelListUpdate"(user, channel.channel, ChannelListUpdateType.updated);
+					tryCall!"onChannelListUpdate"(user, oldUser, channel.channel, ChannelListUpdateType.updated);
 				}
 			}
 			tryCall!"onWHOXReply"(reply.get, metadata);
@@ -1887,7 +1888,7 @@ version(unittest) {
 			topicWhoTime = twt;
 		};
 		Tuple!(const User, "user", const Channel, "channel", ChannelListUpdateType, "type")[] updates;
-		client.onChannelListUpdate = (const User user, const Channel chan, ChannelListUpdateType type) {
+		client.onChannelListUpdate = (const User user, const User old, const Channel chan, ChannelListUpdateType type) {
 			updates ~= tuple!("user", "channel", "type")(user, chan, type);
 		};
 		NamesReply[] namesReplies;
