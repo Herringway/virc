@@ -592,6 +592,7 @@ struct IRCClient {
 	public void quit(const string msg) @safe {
 		write!"QUIT :%s"(msg);
 		state = state.init;
+		state.invalid = false;
 	}
 	public void changeNickname(const string nick) @safe {
 		write!"NICK %s"(nick);
