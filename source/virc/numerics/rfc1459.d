@@ -293,8 +293,32 @@ struct NamesReply {
 	NamReplyFlag chanFlag;
 	string channel;
 	string _users;
-	auto users() inout {
-		return _users.splitter(" ");
+	static struct User {
+		string modes;
+		string name;
+		this(string str, char[char] prefixes) @safe pure nothrow {
+			size_t nameStart;
+			foreach (idx, char chr; str) {
+				bool found;
+				foreach (mode; prefixes.keys) {
+					const prefix = prefixes[mode];
+					if (chr == prefix) {
+						found = true;
+						modes ~= mode;
+						break;
+					}
+				}
+				if (!found) {
+					nameStart = idx;
+					break;
+				}
+			}
+			name = str[nameStart .. $];
+		}
+	}
+	auto users(char[char] prefixes) inout nothrow {
+		import std.algorithm.iteration : map;
+		return _users.splitter(" ").map!(x => User(x, prefixes));
 	}
 }
 /++
@@ -385,6 +409,7 @@ auto parseNumeric(Numeric numeric : Numeric.RPL_NAMREPLY, T)(T input) {
 ///
 @safe pure nothrow unittest {
 	import std.algorithm.searching : canFind;
+	import std.algorithm.comparison : equal;
 	import std.array : array;
 	import std.range : only, takeNone;
 	import virc.ircsplitter : IRCSplitter;
@@ -392,10 +417,26 @@ auto parseNumeric(Numeric numeric : Numeric.RPL_NAMREPLY, T)(T input) {
 		auto namReply = parseNumeric!(Numeric.RPL_NAMREPLY)(IRCSplitter("someone = #channel :User1 User2 @User3 +User4"));
 		assert(namReply.get.chanFlag == NamReplyFlag.public_);
 		assert(namReply.get.channel == "#channel");
-		assert(namReply.get.users.array.canFind("User1"));
-		assert(namReply.get.users.array.canFind("User2"));
-		assert(namReply.get.users.array.canFind("@User3"));
-		assert(namReply.get.users.array.canFind("+User4"));
+		auto users = namReply.get.users(['o': '@', 'v': '+']);
+		with(users.front) {
+			assert(modes.equal(""));
+			assert(name == "User1");
+		}
+		users.popFront();
+		with(users.front) {
+			assert(modes.equal(""));
+			assert(name == "User2");
+		}
+		users.popFront();
+		with(users.front) {
+			assert(modes.equal("o"));
+			assert(name == "User3");
+		}
+		users.popFront();
+		with(users.front) {
+			assert(modes.equal("v"));
+			assert(name == "User4");
+		}
 	}
 	{
 		immutable namReply = parseNumeric!(Numeric.RPL_NAMREPLY)(IRCSplitter("someone = #channel"));

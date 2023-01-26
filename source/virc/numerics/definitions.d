@@ -121,6 +121,8 @@ enum Numeric {
 	///
 	RPL_NAMREPLY = "353",
 	///
+	RPL_WHOSPCRPL = "354",
+	///
 	RPL_LINKS = "364",
 	///
 	RPL_ENDOFLINKS = "365",

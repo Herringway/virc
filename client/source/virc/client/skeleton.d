@@ -181,6 +181,7 @@ alias ClientNoOpCommands = AliasSeq!(
 	Numeric.RPL_HOSTHIDDEN,
 	Numeric.RPL_ENDOFNAMES,
 	Numeric.RPL_ENDOFMONLIST,
+	Numeric.RPL_ENDOFWHO,
 	Numeric.RPL_LOCALUSERS,
 	Numeric.RPL_GLOBALUSERS,
 	Numeric.RPL_YOURHOST,
@@ -297,6 +298,12 @@ interface Output {
 	void put(char) @safe;
 }
 
+enum ChannelListUpdateType {
+	added,
+	removed,
+	updated
+}
+
 /++
 + IRC client implementation.
 +/
@@ -383,6 +390,8 @@ struct IRCClient {
 	///
 	void delegate(const NamesReply, const MessageMetadata) @safe onNamesReply;
 	///
+	void delegate(const WHOXReply, const MessageMetadata) @safe onWHOXReply;
+	///
 	void delegate(const TopicReply, const MessageMetadata) @safe onTopicReply;
 	///
 	void delegate(const User, const Channel, const string, const MessageMetadata) @safe onTopicChange;
@@ -408,6 +417,8 @@ struct IRCClient {
 	void delegate(const MessageMetadata) @safe onRaw;
 	///
 	void delegate() @safe onConnect;
+	/// Called whenever a channel user list is updated
+	void delegate(const User, const Channel, ChannelListUpdateType) @safe onChannelListUpdate;
 	///
 	debug void delegate(const string) @safe onSend;
 
@@ -506,7 +517,7 @@ struct IRCClient {
 				switchy: switch (parsed.verb) {
 					//TOO MANY TEMPLATE INSTANTIATIONS! uncomment when compiler fixes this!
 					//alias Numerics = NoDuplicates!(EnumMembers!Numeric);
-					alias Numerics = AliasSeq!(Numeric.RPL_WELCOME, Numeric.RPL_ISUPPORT, Numeric.RPL_LIST, Numeric.RPL_YOURHOST, Numeric.RPL_CREATED, Numeric.RPL_LISTSTART, Numeric.RPL_LISTEND, Numeric.RPL_ENDOFMONLIST, Numeric.RPL_ENDOFNAMES, Numeric.RPL_YOURID, Numeric.RPL_LOCALUSERS, Numeric.RPL_GLOBALUSERS, Numeric.RPL_HOSTHIDDEN, Numeric.RPL_TEXT, Numeric.RPL_MYINFO, Numeric.RPL_LOGON, Numeric.RPL_MONONLINE, Numeric.RPL_MONOFFLINE, Numeric.RPL_MONLIST, Numeric.RPL_LUSERCLIENT, Numeric.RPL_LUSEROP, Numeric.RPL_LUSERCHANNELS, Numeric.RPL_LUSERME, Numeric.RPL_TOPIC, Numeric.RPL_NAMREPLY, Numeric.RPL_TOPICWHOTIME, Numeric.RPL_SASLSUCCESS, Numeric.RPL_LOGGEDIN, Numeric.RPL_VERSION, Numeric.ERR_MONLISTFULL, Numeric.ERR_NOMOTD, Numeric.ERR_NICKLOCKED, Numeric.ERR_SASLFAIL, Numeric.ERR_SASLTOOLONG, Numeric.ERR_SASLABORTED, Numeric.RPL_REHASHING, Numeric.ERR_NOPRIVS, Numeric.RPL_YOUREOPER, Numeric.ERR_NOSUCHSERVER, Numeric.ERR_NOPRIVILEGES, Numeric.RPL_AWAY, Numeric.RPL_UNAWAY, Numeric.RPL_NOWAWAY, Numeric.RPL_ENDOFWHOIS, Numeric.RPL_WHOISUSER, Numeric.RPL_WHOISSECURE, Numeric.RPL_WHOISOPERATOR, Numeric.RPL_WHOISREGNICK, Numeric.RPL_WHOISIDLE, Numeric.RPL_WHOISSERVER, Numeric.RPL_WHOISACCOUNT, Numeric.RPL_ADMINEMAIL, Numeric.RPL_ADMINLOC1, Numeric.RPL_ADMINLOC2, Numeric.RPL_ADMINME, Numeric.RPL_WHOISHOST, Numeric.RPL_WHOISMODE, Numeric.RPL_WHOISCERTFP, Numeric.RPL_WHOISCHANNELS, Numeric.RPL_ISON, Numeric.RPL_WHOISKEYVALUE, Numeric.RPL_KEYVALUE, Numeric.RPL_KEYNOTSET, Numeric.ERR_METADATASYNCLATER, Numeric.RPL_METADATASUBOK, Numeric.RPL_METADATAUNSUBOK, Numeric.RPL_METADATASUBS);
+					alias Numerics = AliasSeq!(Numeric.RPL_WELCOME, Numeric.RPL_ISUPPORT, Numeric.RPL_LIST, Numeric.RPL_YOURHOST, Numeric.RPL_CREATED, Numeric.RPL_LISTSTART, Numeric.RPL_LISTEND, Numeric.RPL_ENDOFMONLIST, Numeric.RPL_ENDOFNAMES, Numeric.RPL_YOURID, Numeric.RPL_LOCALUSERS, Numeric.RPL_GLOBALUSERS, Numeric.RPL_HOSTHIDDEN, Numeric.RPL_TEXT, Numeric.RPL_MYINFO, Numeric.RPL_LOGON, Numeric.RPL_MONONLINE, Numeric.RPL_MONOFFLINE, Numeric.RPL_MONLIST, Numeric.RPL_LUSERCLIENT, Numeric.RPL_LUSEROP, Numeric.RPL_LUSERCHANNELS, Numeric.RPL_LUSERME, Numeric.RPL_TOPIC, Numeric.RPL_NAMREPLY, Numeric.RPL_TOPICWHOTIME, Numeric.RPL_SASLSUCCESS, Numeric.RPL_LOGGEDIN, Numeric.RPL_VERSION, Numeric.ERR_MONLISTFULL, Numeric.ERR_NOMOTD, Numeric.ERR_NICKLOCKED, Numeric.ERR_SASLFAIL, Numeric.ERR_SASLTOOLONG, Numeric.ERR_SASLABORTED, Numeric.RPL_REHASHING, Numeric.ERR_NOPRIVS, Numeric.RPL_YOUREOPER, Numeric.ERR_NOSUCHSERVER, Numeric.ERR_NOPRIVILEGES, Numeric.RPL_AWAY, Numeric.RPL_UNAWAY, Numeric.RPL_NOWAWAY, Numeric.RPL_ENDOFWHOIS, Numeric.RPL_WHOISUSER, Numeric.RPL_WHOISSECURE, Numeric.RPL_WHOISOPERATOR, Numeric.RPL_WHOISREGNICK, Numeric.RPL_WHOISIDLE, Numeric.RPL_WHOISSERVER, Numeric.RPL_WHOISACCOUNT, Numeric.RPL_ADMINEMAIL, Numeric.RPL_ADMINLOC1, Numeric.RPL_ADMINLOC2, Numeric.RPL_ADMINME, Numeric.RPL_WHOISHOST, Numeric.RPL_WHOISMODE, Numeric.RPL_WHOISCERTFP, Numeric.RPL_WHOISCHANNELS, Numeric.RPL_ISON, Numeric.RPL_WHOISKEYVALUE, Numeric.RPL_KEYVALUE, Numeric.RPL_KEYNOTSET, Numeric.ERR_METADATASYNCLATER, Numeric.RPL_METADATASUBOK, Numeric.RPL_METADATAUNSUBOK, Numeric.RPL_METADATASUBS, Numeric.RPL_WHOSPCRPL, Numeric.RPL_ENDOFWHO);
 
 					static foreach (cmd; AliasSeq!(NoDuplicates!(EnumMembers!IRCV3Commands), NoDuplicates!(EnumMembers!RFC1459Commands), NoDuplicates!(EnumMembers!RFC2812Commands), Numerics)) {
 						case cmd:
@@ -954,6 +965,7 @@ struct IRCClient {
 			msg = split.front;
 		}
 
+		tryCall!"onChannelListUpdate"(victim, channel, ChannelListUpdateType.removed);
 		tryCall!"onKick"(source, channel, victim, msg, metadata);
 	}
 	private void rec(string cmd : RFC1459Commands.wallops)(IRCMessage message, const MessageMetadata metadata) {
@@ -988,13 +1000,17 @@ struct IRCClient {
 			source.realName = split.front;
 			split.popFront();
 		}
+		if (server.iSupport.whoX) {
+			write!"WHO %s %%uihsnflar"(channel);
+		}
 		if (channel.name !in channels) {
-			channels[channel.name] = ChannelState();
+			channels[channel.name] = ChannelState(Channel(channel.name));
 		}
 		internalAddressList.update(source);
 		if (source.nickname in internalAddressList) {
 			channels[channel.name].users.update(internalAddressList[source.nickname]);
 		}
+		tryCall!"onChannelListUpdate"(source, channel, ChannelListUpdateType.added);
 		tryCall!"onJoin"(source, channel, metadata);
 	}
 	private void rec(string cmd : RFC1459Commands.part)(IRCMessage message, const MessageMetadata metadata) {
@@ -1014,6 +1030,7 @@ struct IRCClient {
 		if ((user == me) && (channel.name in channels)) {
 			channels.remove(channel.name);
 		}
+		tryCall!"onChannelListUpdate"(user, channel, ChannelListUpdateType.removed);
 		tryCall!"onPart"(user, channel, msg, metadata);
 	}
 	private void rec(string cmd : RFC1459Commands.notice)(IRCMessage message, const MessageMetadata metadata) {
@@ -1057,6 +1074,9 @@ struct IRCClient {
 	}
 	private void rec(string cmd : Numeric.RPL_WELCOME)(IRCMessage message, const MessageMetadata metadata) {
 		state.isRegistered = true;
+		if (!message.args.empty && (message.args.front != "*") && (User(message.args.front).nickname != nickinfo.nickname)) {
+			nickinfo.nickname = User(message.args.front).nickname;
+		}
 		auto meUser = User();
 		meUser.mask.nickname = nickinfo.nickname;
 		meUser.mask.ident = nickinfo.username;
@@ -1246,8 +1266,16 @@ struct IRCClient {
 		if (!split.empty) {
 			msg = split.front;
 		}
-		internalAddressList.invalidate(user.nickname);
+		foreach (ref channel; channels) {
+			if (user.nickname in channel.users) {
+				tryCall!"onChannelListUpdate"(user, channel.channel, ChannelListUpdateType.added);
+			}
+		}
+		if (isMe(user)) {
+			state.invalid = true;
+		}
 		tryCall!"onQuit"(user, msg, metadata);
+		internalAddressList.invalidate(user.nickname);
 	}
 	private void recUnknownCommand(const string cmd, const MessageMetadata metadata) @safe {
 		if (cmd.filter!(x => !x.isDigit).empty) {
@@ -1261,12 +1289,34 @@ struct IRCClient {
 	private void rec(string cmd : Numeric.RPL_NAMREPLY)(IRCMessage message, const MessageMetadata metadata) {
 		auto reply = parseNumeric!(Numeric.RPL_NAMREPLY)(message.args);
 		if (reply.get.channel in channels) {
-			foreach (user; reply.get.users) {
-				channels[reply.get.channel].users.update(User(user));
+			foreach (user; reply.get.users(server.iSupport.prefixes)) {
+				const newUser = User(user.name);
+				channels[reply.get.channel].users.update(newUser);
+				if (newUser != me) {
+					tryCall!"onChannelListUpdate"(newUser, Channel(reply.get.channel), ChannelListUpdateType.added);
+				}
 			}
 		}
 		if (!reply.isNull) {
 			tryCall!"onNamesReply"(reply.get, metadata);
+		}
+	}
+	private void rec(string cmd : Numeric.RPL_WHOSPCRPL)(IRCMessage message, const MessageMetadata metadata) {
+		auto reply = parseNumeric!(Numeric.RPL_WHOSPCRPL)(message.args, "uihsnflar");
+		if (!reply.isNull) {
+			User user;
+			user.account = reply.get.account;
+			user.realName = reply.get.realname;
+			user.mask.ident = reply.get.ident;
+			user.mask.host = reply.get.host;
+			user.mask.nickname = reply.get.nick.get;
+			internalAddressList.update(user);
+			foreach (ref channel; channels) {
+				if (user.nickname in channel.users) {
+					tryCall!"onChannelListUpdate"(user, channel.channel, ChannelListUpdateType.updated);
+				}
+			}
+			tryCall!"onWHOXReply"(reply.get, metadata);
 		}
 	}
 	private void rec(string cmd : Numeric.RPL_REHASHING)(IRCMessage message, const MessageMetadata metadata) {
@@ -1563,8 +1613,14 @@ struct IRCClient {
 	private void rec(string cmd : IRCV3Commands.fail)(IRCMessage message, const MessageMetadata metadata) {
 		tryCall!"onError"(IRCError(ErrorType.standardFail, cmd), metadata);
 	}
+	bool isMe(const User user) const pure @safe nothrow {
+		return user == me;
+	}
 	bool isValid() const pure @safe nothrow {
 		return !state.invalid;
+	}
+	bool isRegistered() const pure @safe nothrow {
+		return state.isRegistered;
 	}
 }
 version(unittest) {
@@ -1575,7 +1631,7 @@ version(unittest) {
 	import std.string : lineSplitter, representation;
 	import std.typecons : Tuple, tuple;
 	import virc.ircv3 : Capability;
-	static immutable testClientInfo = NickInfo("nick", "ident", "real name!");
+	static immutable testClientInfo = NickInfo("someone", "ident", "real name!");
 	static immutable testUser = User(testClientInfo.nickname, testClientInfo.username, "example.org");
 	mixin template Test() {
 		bool lineReceived;
@@ -1595,8 +1651,8 @@ version(unittest) {
 		client.put(":localhost 004 someone localhost IRCd-2.0 BGHIRSWcdgikorswx ABCDFGIJKLMNOPQRSTYabcefghijklmnopqrstuvz FIJLYabefghjkloqv");
 		client.put(":localhost 005 someone AWAYLEN=200 CALLERID=g CASEMAPPING=rfc1459 CHANMODES=IYbeg,k,FJLfjl,ABCDGKMNOPQRSTcimnprstuz CHANNELLEN=31 CHANTYPES=# CHARSET=ascii ELIST=MU ESILENCE EXCEPTS=e EXTBAN=,ABCNOQRSTUcjmprsz FNC INVEX=I :are supported by this server");
 		client.put(":localhost 005 someone KICKLEN=255 MAP MAXBANS=60 MAXCHANNELS=25 MAXPARA=32 MAXTARGETS=20 MODES=10 NAMESX NETWORK=TestNet NICKLEN=31 OPERLOG OVERRIDE PREFIX=(qaohv)~&@%+ :are supported by this server");
-		client.put(":localhost 005 someone REMOVE SECURELIST SILENCE=32 SSL=[::]:6697 STARTTLS STATUSMSG=~&@%+ TOPICLEN=307 UHNAMES USERIP VBANLIST WALLCHOPS WALLVOICES WATCH=1000 :are supported by this server");
-		assert(client.state.isRegistered);
+		client.put(":localhost 005 someone REMOVE SECURELIST SILENCE=32 SSL=[::]:6697 STARTTLS STATUSMSG=~&@%+ TOPICLEN=307 UHNAMES USERIP VBANLIST WALLCHOPS WALLVOICES WATCH=1000 WHOX :are supported by this server");
+		assert(client.isRegistered);
 		assert(client.server.iSupport.userhostsInNames == true);
 	}
 	void initializeCaps(T)(ref T client) {
@@ -1640,11 +1696,11 @@ version(unittest) {
 	assert(lineReceived == false);
 	client.put("hello");
 	assert(lineReceived == true);
-	assert(!client.state.isRegistered);
+	assert(!client.isRegistered);
 	client.put(":localhost 001 someone :words");
-	assert(client.state.isRegistered);
+	assert(client.isRegistered);
 	client.put(":localhost 001 someone :words");
-	assert(client.state.isRegistered);
+	assert(client.isRegistered);
 }
 //Auto-decoding test
 @safe unittest {
@@ -1811,6 +1867,14 @@ version(unittest) {
 			topicWhoTimeReceived = true;
 			topicWhoTime = twt;
 		};
+		Tuple!(const User, "user", const Channel, "channel", ChannelListUpdateType, "type")[] updates;
+		client.onChannelListUpdate = (const User user, const Channel chan, ChannelListUpdateType type) {
+			updates ~= tuple!("user", "channel", "type")(user, chan, type);
+		};
+		NamesReply[] namesReplies;
+		client.onNamesReply = (const NamesReply reply, const MessageMetadata) {
+			namesReplies ~= reply;
+		};
 		TopicReply topicReply;
 		bool topicReplyReceived;
 		client.onTopicReply = (const TopicReply tr, const MessageMetadata) {
@@ -1823,10 +1887,13 @@ version(unittest) {
 		client.put(":someone!ident@hostmask JOIN :#test");
 		client.put(":localhost 332 someone #test :a topic");
 		client.put(":localhost 333 someone #test someoneElse :1496821983");
-		client.put(":localhost 353 someone = #test :someone!ident@hostmask another!user@somewhere");
+		client.put(":localhost 353 someone = #test :someone!ident@hostmask +@another!user@somewhere");
 		client.put(":localhost 366 someone #test :End of /NAMES list.");
 		client.put(":localhost 324 someone #test :+nt");
 		client.put(":localhost 329 someone #test :1496821983");
+		client.put(":localhost 354 someone ident 127.0.0.1 hostmask localhost someone H@r 0 SomeoneAccount * :a real name");
+		client.put(":localhost 354 someone ident 127.0.0.2 somewhere localhost another H@r 66 SomeoneElseAccount * :a different real name");
+		client.put(":localhost 315 someone #test :End of WHO list");
 
 		assert(joins.length == 1);
 		with(joins[0]) {
@@ -1834,9 +1901,11 @@ version(unittest) {
 			assert(channel.name == "#test");
 		}
 		assert("someone" in client.channels["#test"].users);
+		assert(client.channels["#test"].channel.name == "#test");
 		assert(client.channels["#test"].users["someone"] == User("someone!ident@hostmask"));
 		assert("someone" in client.internalAddressList);
 		assert(client.internalAddressList["someone"] == User("someone!ident@hostmask"));
+		assert(client.internalAddressList["someone"].account.get == "SomeoneAccount");
 
 		assert(topicWhoTimeReceived);
 		assert(topicReplyReceived);
@@ -1856,8 +1925,32 @@ version(unittest) {
 		}
 		//TODO: Add 366, 324, 329 tests
 		auto lineByLine = client.output.data.lineSplitter();
-		assert(lineByLine.array[$-1] == "JOIN #test");
-
+		assert(lineByLine.array[$-2] == "JOIN #test");
+		assert(namesReplies.length == 1);
+		assert(namesReplies[0].users(['o': '@', 'v': '+']).array.length == 2);
+		assert(updates.length == 4);
+		with(updates[0]) {
+			assert(user.nickname == "someone");
+			assert(user.account.isNull);
+			assert(channel.name == "#test");
+		}
+		with(updates[1]) {
+			assert(user.nickname == "another");
+			assert(user.account.isNull);
+			assert(channel.name == "#test");
+		}
+		with(updates[2]) {
+			assert(user.nickname == "someone");
+			assert(!user.account.isNull);
+			assert(user.account.get == "SomeoneAccount");
+			assert(channel.name == "#test");
+		}
+		with(updates[3]) {
+			assert(user.nickname == "another");
+			assert(!user.account.isNull);
+			assert(user.account.get == "SomeoneElseAccount");
+			assert(channel.name == "#test");
+		}
 	}
 	{ //Channel list example
 		auto client = spawnNoBufferClient();
@@ -1985,7 +2078,7 @@ version(unittest) {
 		auto client = spawnNoBufferClient();
 		put(client, ":localhost CAP * LS * : ");
 		setupFakeConnection(client);
-		assert(client.state.isRegistered);
+		assert(client.isRegistered);
 	}
 	{ //example taken from RFC2812, section 3.2.2
 		auto client = spawnNoBufferClient();

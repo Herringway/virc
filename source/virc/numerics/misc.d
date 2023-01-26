@@ -4,6 +4,8 @@
 module virc.numerics.misc;
 
 import virc.numerics.definitions;
+
+import std.typecons : Nullable;
 /++
 +
 +/
@@ -206,6 +208,128 @@ auto parseNumeric(Numeric numeric : Numeric.RPL_WHOISACCOUNT, T)(T input) {
 	}
 	{
 		immutable reply = parseNumeric!(Numeric.RPL_WHOISACCOUNT)(takeNone(only("")));
+		assert(reply.isNull);
+	}
+}
+struct WHOXReply {
+	Nullable!string token;
+	Nullable!string channel;
+	Nullable!string ident;
+	Nullable!string ip;
+	Nullable!string host;
+	Nullable!string server;
+	Nullable!string nick;
+	Nullable!string flags;
+	Nullable!string hopcount;
+	Nullable!string idle;
+	Nullable!string account;
+	Nullable!string oplevel;
+	Nullable!string realname;
+}
+/++
++ Parser for RPL_WHOSPCRPL
++
++ Format is `354 <client> [token] [channel] [user] [ip] [host] [server] [nick] [flags] [hopcount] [idle] [account] [oplevel] [:realname]`
++/
+auto parseNumeric(Numeric numeric : Numeric.RPL_WHOSPCRPL, T)(T input, string flags) {
+	WHOXReply reply;
+	enum map = [
+		't': 0,
+		'c': 1,
+		'u': 2,
+		'i': 3,
+		'h': 4,
+		's': 5,
+		'n': 6,
+		'f': 7,
+		'd': 8,
+		'l': 9,
+		'a': 10,
+		'o': 11,
+		'r': 12,
+	];
+	if (input.empty) {
+		return Nullable!WHOXReply.init;
+	}
+	input.popFront();
+	bool[13] expectedFields;
+	foreach (flag; flags) {
+		expectedFields[map.get(flag, throw new Exception("Flag not supported"))] = true;
+	}
+	size_t currentField;
+	static foreach (idx; 0 .. WHOXReply.tupleof.length) {
+		if (expectedFields[idx]) {
+			if (input.empty) {
+				return Nullable!WHOXReply.init;
+			}
+			static if (idx == map['a']) {
+				if (input.front != "0") {
+					reply.tupleof[idx] = input.front;
+				}
+			} else static if (idx == map['c']) {
+				if (input.front != "*") {
+					reply.tupleof[idx] = input.front;
+				}
+			} else static if (idx == map['i']) {
+				if (input.front != "255.255.255.255") {
+					reply.tupleof[idx] = input.front;
+				}
+			} else {
+				reply.tupleof[idx] = input.front;
+			}
+			input.popFront();
+		}
+	}
+	return Nullable!WHOXReply(reply);
+}
+///
+@safe pure unittest {
+	import virc.common : User;
+	import std.range : only, takeNone;
+	{
+		immutable reply = parseNumeric!(Numeric.RPL_WHOSPCRPL)(only("mynick", "#ircv3", "~cooluser", "coolhost", "cooluser", "coolaccount", "Cool User"), "cuhnar");
+		assert(reply.get.channel.get == "#ircv3");
+		assert(reply.get.ident.get == "~cooluser");
+		assert(reply.get.host.get == "coolhost");
+		assert(reply.get.nick.get == "cooluser");
+		assert(reply.get.account.get == "coolaccount");
+		assert(reply.get.realname.get == "Cool User");
+	}
+	{
+		immutable reply = parseNumeric!(Numeric.RPL_WHOSPCRPL)(only("mynick", "#ircv3", "~cooluser", "coolhost", "cooluser", "0", "Cool User"), "cuhnar");
+		assert(reply.get.channel.get == "#ircv3");
+		assert(reply.get.ident.get == "~cooluser");
+		assert(reply.get.host.get == "coolhost");
+		assert(reply.get.nick.get == "cooluser");
+		assert(reply.get.account.isNull);
+		assert(reply.get.realname.get == "Cool User");
+	}
+	{
+		immutable reply = parseNumeric!(Numeric.RPL_WHOSPCRPL)(only("mynick", "#ircv3", "~cooluser", "coolhost", "cooluser", "coolaccount"), "cuhnar");
+		assert(reply.isNull);
+	}
+	{
+		immutable reply = parseNumeric!(Numeric.RPL_WHOSPCRPL)(only("mynick", "#ircv3", "~cooluser", "coolhost", "cooluser"), "cuhnar");
+		assert(reply.isNull);
+	}
+	{
+		immutable reply = parseNumeric!(Numeric.RPL_WHOSPCRPL)(only("mynick", "#ircv3", "~cooluser", "coolhost"), "cuhnar");
+		assert(reply.isNull);
+	}
+	{
+		immutable reply = parseNumeric!(Numeric.RPL_WHOSPCRPL)(only("mynick", "#ircv3", "~cooluser"), "cuhnar");
+		assert(reply.isNull);
+	}
+	{
+		immutable reply = parseNumeric!(Numeric.RPL_WHOSPCRPL)(only("mynick", "#ircv3"), "cuhnar");
+		assert(reply.isNull);
+	}
+	{
+		immutable reply = parseNumeric!(Numeric.RPL_WHOSPCRPL)(only("mynick"), "cuhnar");
+		assert(reply.isNull);
+	}
+	{
+		immutable reply = parseNumeric!(Numeric.RPL_WHOSPCRPL)(takeNone(only("")), "cuhnar");
 		assert(reply.isNull);
 	}
 }
