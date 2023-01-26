@@ -59,6 +59,7 @@ enum supportedCaps = AliasSeq!(
 	"extended-join", // http://ircv3.net/specs/extensions/extended-join-3.1.html
 	"invite-notify", // http://ircv3.net/specs/extensions/invite-notify-3.2.html
 	"draft/metadata-2", //
+	"message-tags", //https://ircv3.net/specs/extensions/message-tags
 	"draft/metadata-notify-2", //
 	//"monitor", // http://ircv3.net/specs/core/monitor-3.2.html
 	"multi-prefix", // http://ircv3.net/specs/extensions/multi-prefix-3.1.html
@@ -206,6 +207,7 @@ struct ChannelState {
 	Channel channel;
 	string topic;
 	InternalAddressList users;
+	Mode[] modes;
 	void toString(T)(T sink) const if (isOutputRange!(T, const(char))) {
 		formattedWrite!"Channel: %s\n"(sink, channel);
 		formattedWrite!"\tTopic: %s\n"(sink, topic);
@@ -610,14 +612,20 @@ struct IRCClient {
 		import std.range : only;
 		join(only(chan.text), only(key));
 	}
-	public void msg(const string target, const string message) @safe {
-		write!"PRIVMSG %s :%s"(target, message);
+	public void msg(const string target, const string message, IRCTags tags = IRCTags.init) @safe {
+		writeTags!"PRIVMSG %s :%s"(tags, target, message);
+	}
+	public void tagMsg(const string target, IRCTags tags = IRCTags.init) @safe {
+		writeTags!"TAGMSG %s"(tags, target);
 	}
 	public void wallops(const string message) @safe {
 		write!"WALLOPS :%s"(message);
 	}
-	public void msg(const Target target, const Message message) @safe {
-		msg(target.targetText, message.text);
+	public void msg(const Target target, const Message message, IRCTags tags = IRCTags.init) @safe {
+		msg(target.targetText, message.text, tags);
+	}
+	public void tagMsg(const Target target, IRCTags tags = IRCTags.init) @safe {
+		tagMsg(target.targetText, tags);
 	}
 	public void ctcp(const Target target, const string command, const string args) @safe {
 		msg(target, Message("\x01"~command~" "~args~"\x01"));
@@ -764,9 +772,16 @@ struct IRCClient {
 		user(nickinfo.username, nickinfo.realname);
 	}
 	private void write(string fmt, T...)(scope T args) {
+		writeTags!(fmt, T)(IRCTags.init, args);
+	}
+	private void writeTags(string fmt, T...)(IRCTags tags, scope T args) {
 		import std.range : put;
 		debug(verboseirc) import std.experimental.logger : tracef;
-		debug(verboseirc) tracef("→: "~fmt, args);
+		const sendTags = !tags.empty && isEnabled(Capability("message-tags"));
+		debug(verboseirc) tracef("→: %s"~fmt, sendTags ? format!"@%s "(tags) : "", args);
+		if (sendTags) {
+			formattedWrite!"@%s "(output, tags);
+		}
 		formattedWrite!fmt(output, args);
 		put(output, "\r\n");
 		debug {

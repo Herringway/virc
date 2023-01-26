@@ -38,6 +38,15 @@ struct IRCTags {
 		}
 		return pieces.join(";");
 	}
+	bool empty() const @safe pure nothrow {
+		return tags.length == 0;
+	}
+	void reply(string id) @safe pure nothrow {
+		tags["+draft/reply"] = id;
+	}
+	void typing(TypingState state) @safe pure nothrow {
+		tags["+typing"] = cast(string)state;
+	}
 }
 
 ///
@@ -297,4 +306,10 @@ T replaceEscape(T, replacements...)(T input) {
 	assert(replaceEscape("") == "");
 	assert(replaceEscape!(string, only("a", "b"))("a") == "b");
 	assert(replaceEscape!(string, only("a", "b"), only("aa", "b"))("aa") == "bb");
+}
+
+enum TypingState {
+	active = "active",
+	paused = "paused",
+	done = "done",
 }
