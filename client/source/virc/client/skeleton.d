@@ -1304,6 +1304,9 @@ struct IRCClient {
 	}
 	private void rec(string cmd : Numeric.RPL_NAMREPLY)(IRCMessage message, const MessageMetadata metadata) {
 		auto reply = parseNumeric!(Numeric.RPL_NAMREPLY)(message.args);
+		foreach (user; reply.get.users(server.iSupport.prefixes)) {
+			internalAddressList.update(User(user.name));
+		}
 		if (reply.get.channel in channels) {
 			foreach (user; reply.get.users(server.iSupport.prefixes)) {
 				const newUser = User(user.name);
@@ -1907,6 +1910,9 @@ version(unittest) {
 		client.put(":localhost 366 someone #test :End of /NAMES list.");
 		client.put(":localhost 324 someone #test :+nt");
 		client.put(":localhost 329 someone #test :1496821983");
+		assert("someone" in client.internalAddressList);
+		assert(client.internalAddressList["someone"] == User("someone!ident@hostmask"));
+		assert(client.internalAddressList["someone"].account.isNull);
 		client.put(":localhost 354 someone ident 127.0.0.1 hostmask localhost someone H@r 0 SomeoneAccount * :a real name");
 		client.put(":localhost 354 someone ident 127.0.0.2 somewhere localhost another H@r 66 SomeoneElseAccount * :a different real name");
 		client.put(":localhost 315 someone #test :End of WHO list");
