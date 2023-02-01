@@ -82,7 +82,8 @@ struct BatchProcessor {
 	}
 }
 private struct BatchCommand {
-	string server;
+	import virc.common : User;
+	User source;
 	string referenceTag;
 	string type;
 	string[] parameters;
@@ -94,7 +95,7 @@ private struct BatchCommand {
 			return;
 		}
 		isValid = true;
-		server = msg.sourceUser.get.server;
+		source = msg.sourceUser.get;
 		auto args = msg.args;
 		referenceTag = args.front[1..$];
 		isNew = (args.front[0] == '+');

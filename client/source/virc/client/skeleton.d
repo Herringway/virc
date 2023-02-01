@@ -2659,10 +2659,15 @@ version(unittest) {
 
 		client.put(`:irc.host BATCH -yXNAbvnRHTRBv`);
 
+
 		assert(quits.length == 3);
 		with(quits[0]) {
 			assert(metadata.batch.type == "netsplit");
 		}
+		client.put(`:SomeUser!Someplace@Somewhere BATCH +2 something`);
+		client.put(`@batch=2 :SomeUser!Someplace@Somewhere PRIVMSG #channel :hello`);
+		client.put(`@batch=2 :SomeUser!Someplace@Somewhere PRIVMSG #channel :hello again`);
+		client.put(`:SomeUser!Someplace@Somewhere BATCH -2`);
 	}
 	{ //INVITE tests
 		auto client = spawnNoBufferClient();
