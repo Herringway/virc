@@ -61,6 +61,7 @@ enum supportedCaps = AliasSeq!(
 	"draft/metadata-2", //
 	"message-tags", //https://ircv3.net/specs/extensions/message-tags
 	"draft/metadata-notify-2", //
+	"draft/multiline", // https://ircv3.net/specs/extensions/multiline
 	//"monitor", // http://ircv3.net/specs/core/monitor-3.2.html
 	"multi-prefix", // http://ircv3.net/specs/extensions/multi-prefix-3.1.html
 	"sasl", // http://ircv3.net/specs/extensions/sasl-3.1.html and http://ircv3.net/specs/extensions/sasl-3.2.html
@@ -1062,6 +1063,9 @@ struct IRCClient {
 		auto user = message.sourceUser.get;
 		auto target = Target(split.front, server.iSupport.statusMessage, server.iSupport.channelTypes);
 		split.popFront();
+		if (split.empty) {
+			return;
+		}
 		auto msg = Message(split.front, MessageType.privmsg);
 		recMessageCommon(user, target, msg, metadata);
 	}
