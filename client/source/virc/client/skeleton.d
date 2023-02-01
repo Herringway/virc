@@ -846,7 +846,7 @@ struct IRCClient {
 		}
 	}
 	private void recCapLS(T)(T caps, const MessageMetadata metadata) if (is(ElementType!T == Capability)) {
-		auto requestCaps = caps.filter!(among!supportedCaps);
+		auto requestCaps = caps.filter!(among!supportedCaps).map!(x => Capability(x.name));
 		state.capReqCount += requestCaps.save().walkLength;
 		if (!requestCaps.empty) {
 			write!"CAP REQ :%-(%s %)"(requestCaps);
@@ -893,7 +893,7 @@ struct IRCClient {
 		tryEndRegistration();
 	}
 	private void recCapNew(T)(T caps, const MessageMetadata metadata) if (is(ElementType!T == Capability)) {
-		auto requestCaps = caps.filter!(among!supportedCaps);
+		auto requestCaps = caps.filter!(among!supportedCaps).map!(x => Capability(x.name));
 		state.capReqCount += requestCaps.save().walkLength;
 		if (!requestCaps.empty) {
 			write!"CAP REQ :%-(%s %)"(requestCaps);
@@ -1803,6 +1803,8 @@ version(unittest) {
 		put(client, ":localhost CAP * LS * :multi-prefix extended-join account-notify batch invite-notify tls");
 		put(client, ":localhost CAP * LS * :cap-notify server-time example.org/dummy-cap=dummyvalue example.org/second-dummy-cap");
 		put(client, ":localhost CAP * LS :userhost-in-names sasl=EXTERNAL,DH-AES,DH-BLOWFISH,ECDSA-NIST256P-CHALLENGE,PLAIN");
+		auto lines = client.output.data.lineSplitter().array;
+		assert(lines[5] == "CAP REQ :userhost-in-names sasl");
 		assert(capabilities.length == 12);
 		setupFakeConnection(client);
 	}
@@ -1877,6 +1879,9 @@ version(unittest) {
 		client.put(":irc.example.com CAP modernclient NEW :account-notify");
 		auto lineByLine = client.output.data.lineSplitter();
 		assert(lineByLine.array[$-1] == "CAP REQ :account-notify");
+		client.put(":irc.example.com CAP modernclient NEW :sasl=new");
+		auto lineByLine2 = client.output.data.lineSplitter();
+		assert(lineByLine2.array[$-1] == "CAP REQ :sasl");
 	}
 	{ //JOIN
 		auto client = spawnNoBufferClient();
