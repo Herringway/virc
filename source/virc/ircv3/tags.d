@@ -34,7 +34,11 @@ struct IRCTags {
 		import std.string : join;
 		string[] pieces;
 		foreach (key, value; tags) {
-			pieces ~= escape(key)~"="~escape(value);
+			string piece = escape(key);
+			if (value != "") {
+				piece ~= "="~escape(value);
+			}
+			pieces ~= piece;
 		}
 		return pieces.join(";");
 	}
@@ -46,6 +50,12 @@ struct IRCTags {
 	}
 	void typing(TypingState state) @safe pure nothrow {
 		tags["+typing"] = cast(string)state;
+	}
+	void batch(string id) @safe pure nothrow {
+		tags["batch"] = id;
+	}
+	void multilineConcat() @safe pure nothrow {
+		tags["draft/multiline-concat"] = "";
 	}
 }
 

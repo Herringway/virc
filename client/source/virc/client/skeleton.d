@@ -442,6 +442,9 @@ struct IRCClient {
 		const(string)[] metadataSubscribedKeys;
 		Capability[string] availableCapabilities;
 		WhoisResponse[string] whoisCache;
+		size_t multilineMaxBytes = size_t.max;
+		size_t multilineMaxLines = size_t.max;
+		size_t batchCounter = 0;
 	}
 	private ClientState state;
 
@@ -615,7 +618,75 @@ struct IRCClient {
 		join(only(chan.text), only(key));
 	}
 	public void msg(const string target, const string message, IRCTags tags = IRCTags.init) @safe {
-		writeTags!"PRIVMSG %s :%s"(tags, target, message);
+		import std.algorithm.comparison : min;
+		import std.format : sformat;
+		import virc.style : checkFormatting, ControlCharacters;
+		enum breathingRoom = 5;
+		const maxLength = 512 - 14 - breathingRoom - me.nickname.length - me.ident.get("").length - me.host.get("").length - target.length;
+		if (message.length < maxLength && !message.canFind("\n")) {
+			writeTags!"PRIVMSG %s :%s"(tags, target, message);
+		} else {
+			const batch = isEnabled(Capability("draft/multiline"));
+			auto batchRemainingLines = state.multilineMaxLines;
+			auto batchRemainingBytes = state.multilineMaxBytes;
+			auto id = batch ? startBatch!" %s"("draft/multiline", tags, target) : 0;
+			char[] formatting;
+			char[20] formattingBuf;
+			bool startNewBatch;
+			foreach (line; message.splitter("\n")) {
+				IRCTags batchTag;
+				do {
+					if (startNewBatch) {
+						endBatch(id);
+						id = startBatch!" %s"("draft/multiline", tags, target);
+						batchTag = batchTag.init;
+						startNewBatch = false;
+					}
+					if (batch) {
+						batchTag.batch(id.text);
+					} else {
+						batchTag = tags;
+					}
+					const printLine = line[0 .. min(formatting.length + line.length, maxLength, batchRemainingBytes) - formatting.length];
+					const activeFormatting = checkFormatting(printLine);
+					writeTags!"PRIVMSG %s :%s%s"(batchTag, target, formatting, printLine);
+					line = line[min(line.length, maxLength, batchRemainingBytes) .. $];
+					if (batch) {
+						batchTag.multilineConcat();
+					}
+					if (--batchRemainingLines == 0) {
+						startNewBatch = true;
+						batchRemainingBytes = state.multilineMaxBytes;
+						batchRemainingLines = state.multilineMaxLines;
+					}
+					batchRemainingBytes -= formatting.length + printLine.length;
+					if (batchRemainingBytes == 0) {
+						startNewBatch = true;
+						batchRemainingBytes = state.multilineMaxBytes;
+						batchRemainingLines = state.multilineMaxLines;
+					}
+					formatting = sformat!"%s%s%s%s%s%s%s"(formattingBuf,
+						activeFormatting.bold ? [cast(char)ControlCharacters.bold] : "",
+						activeFormatting.underline ? [cast(char)ControlCharacters.underline] : "",
+						activeFormatting.strikethrough ? [cast(char)ControlCharacters.strikethrough] : "",
+						activeFormatting.italic ? [cast(char)ControlCharacters.italic] : "",
+						activeFormatting.reverse ? [cast(char)ControlCharacters.reverse] : "",
+						activeFormatting.monospace ? [cast(char)ControlCharacters.monospace] : "",
+						activeFormatting.colour,
+					);
+				} while (line.length > 0);
+			}
+			if (batch) {
+				endBatch(id);
+			}
+		}
+	}
+	size_t startBatch(string fmt, T...)(string type, IRCTags tags, T args) {
+		writeTags!("BATCH +%s %s"~fmt)(tags, state.batchCounter, type, args);
+		return state.batchCounter++;
+	}
+	void endBatch(size_t id) @safe {
+		write!"BATCH -%s"(id);
 	}
 	public void tagMsg(const string target, IRCTags tags = IRCTags.init) @safe {
 		writeTags!"TAGMSG %s"(tags, target);
@@ -937,6 +1008,24 @@ struct IRCClient {
 						case "maxkey":
 							if (!kv.value.isNull) {
 								state.maxMetadataSelfKeys = kv.value.get.to!ulong;
+							}
+							break;
+						default: break;
+					}
+				}
+				break;
+			case "draft/multiline":
+				state.multilineMaxLines = size_t.max;
+				foreach (kv; capDetails.value.splitKeyValues) {
+					switch (kv.key) {
+						case "max-lines":
+							if (!kv.value.isNull) {
+								state.multilineMaxLines = kv.value.get.to!size_t;
+							}
+							break;
+						case "max-bytes":
+							if (!kv.value.isNull) {
+								state.multilineMaxBytes = kv.value.get.to!size_t;
 							}
 							break;
 						default: break;
@@ -3494,5 +3583,106 @@ version(unittest) {
 
 		// end of uh oh zone
 
+	}
+	{ //Multiline messages
+		auto client = spawnNoBufferClient();
+		initializeWithCaps(client, [Capability("draft/multiline", "max-bytes=1000,max-lines=100"), Capability("message-tags")]);
+		{
+			client.msg("someoneElse", "This is a message\nwith newlines in it.\nDo not be alarmed.");
+			auto lines = client.output.data.lineSplitter.array;
+			assert(lines[$ - 5] == "BATCH +0 draft/multiline someoneElse");
+			assert(lines[$ - 4] == "@batch=0 PRIVMSG someoneElse :This is a message");
+			assert(lines[$ - 3] == "@batch=0 PRIVMSG someoneElse :with newlines in it.");
+			assert(lines[$ - 2] == "@batch=0 PRIVMSG someoneElse :Do not be alarmed.");
+			assert(lines[$ - 1] == "BATCH -0");
+		}
+		{
+			client.msg("someoneElse", "This is a very long message. a very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very long message.");
+			auto lines = client.output.data.lineSplitter.array;
+			assert(lines[$ - 4] == "BATCH +1 draft/multiline someoneElse");
+			assert(lines[$ - 3] == "@batch=1 PRIVMSG someoneElse :This is a very long message. a very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very ");
+			assert(lines[$ - 2] == "@batch=1;draft/multiline-concat PRIVMSG someoneElse :very very very very very very very very very very very very very very long message.");
+			assert(lines[$ - 1] == "BATCH -1");
+		}
+		{
+			client.msg("someoneElse", "\x1FThis is a simple message\nwith newlines and formatting.");
+			auto lines = client.output.data.lineSplitter.array;
+			assert(lines[$ - 4] == "BATCH +2 draft/multiline someoneElse");
+			assert(lines[$ - 3] == "@batch=2 PRIVMSG someoneElse :\x1FThis is a simple message");
+			assert(lines[$ - 2] == "@batch=2 PRIVMSG someoneElse :\x1Fwith newlines and formatting.");
+			assert(lines[$ - 1] == "BATCH -2");
+		}
+		{
+			IRCTags reply;
+			reply.reply("replyid");
+			client.msg("someoneElse", "\x1FThis is a simple message\nwith newlines and formatting.", reply);
+			auto lines = client.output.data.lineSplitter.array;
+			assert(lines[$ - 4] == "@+draft/reply=replyid BATCH +3 draft/multiline someoneElse");
+			assert(lines[$ - 3] == "@batch=3 PRIVMSG someoneElse :\x1FThis is a simple message");
+			assert(lines[$ - 2] == "@batch=3 PRIVMSG someoneElse :\x1Fwith newlines and formatting.");
+			assert(lines[$ - 1] == "BATCH -3");
+		}
+	}
+	{ //Multiline messages, low line limit
+		auto client = spawnNoBufferClient();
+		initializeWithCaps(client, [Capability("draft/multiline", "max-bytes=1000,max-lines=2"), Capability("message-tags")]);
+		{
+			client.msg("someoneElse", "This is a message\nwith newlines in it.\nDo not be alarmed.\nIt's fine.");
+			auto lines = client.output.data.lineSplitter.array;
+			assert(lines[$ - 8] == "BATCH +0 draft/multiline someoneElse");
+			assert(lines[$ - 7] == "@batch=0 PRIVMSG someoneElse :This is a message");
+			assert(lines[$ - 6] == "@batch=0 PRIVMSG someoneElse :with newlines in it.");
+			assert(lines[$ - 5] == "BATCH -0");
+			assert(lines[$ - 4] == "BATCH +1 draft/multiline someoneElse");
+			assert(lines[$ - 3] == "@batch=1 PRIVMSG someoneElse :Do not be alarmed.");
+			assert(lines[$ - 2] == "@batch=1 PRIVMSG someoneElse :It's fine.");
+			assert(lines[$ - 1] == "BATCH -1");
+		}
+	}
+	{ //Multiline messages, low byte limit
+		auto client = spawnNoBufferClient();
+		initializeWithCaps(client, [Capability("draft/multiline", "max-bytes=600,max-lines=100"), Capability("message-tags")]);
+		{
+			client.msg("someoneElse", "This is a very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very long message");
+			auto lines = client.output.data.lineSplitter.array;
+			assert(lines[$ - 7] == "BATCH +0 draft/multiline someoneElse");
+			assert(lines[$ - 6] == "@batch=0 PRIVMSG someoneElse :This is a very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very v");
+			assert(lines[$ - 5] == "@batch=0;draft/multiline-concat PRIVMSG someoneElse :ery very very very very very very very very very very very very very very very very very very very very very very very very very very very ");
+			assert(lines[$ - 4] == "BATCH -0");
+			assert(lines[$ - 3] == "BATCH +1 draft/multiline someoneElse");
+			assert(lines[$ - 2] == "@batch=1 PRIVMSG someoneElse :very very very very very very very very very very long message");
+			assert(lines[$ - 1] == "BATCH -1");
+		}
+	}
+	{ //Multiline messages (no cap)
+		auto client = spawnNoBufferClient();
+		initializeWithCaps(client, [Capability("message-tags")]);
+		{
+			client.msg("someoneElse", "This is a message\nwith newlines in it.\nDo not be alarmed.");
+			auto lines = client.output.data.lineSplitter.array;
+			assert(lines[$ - 3] == "PRIVMSG someoneElse :This is a message");
+			assert(lines[$ - 2] == "PRIVMSG someoneElse :with newlines in it.");
+			assert(lines[$ - 1] == "PRIVMSG someoneElse :Do not be alarmed.");
+		}
+		{
+			client.msg("someoneElse", "This is a very long message. a very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very long message.");
+			auto lines = client.output.data.lineSplitter.array;
+			assert(lines[$ - 2] == "PRIVMSG someoneElse :This is a very long message. a very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very very ");
+			assert(lines[$ - 1] == "PRIVMSG someoneElse :very very very very very very very very very very very very very very long message.");
+		}
+		{
+			client.msg("someoneElse", "\x1FThis is a simple message\nwith newlines and formatting.");
+			auto lines = client.output.data.lineSplitter.array;
+			assert(lines[$ - 2] == "PRIVMSG someoneElse :\x1FThis is a simple message");
+			assert(lines[$ - 1] == "PRIVMSG someoneElse :\x1Fwith newlines and formatting.");
+		}
+		{
+			IRCTags reply;
+			reply.reply("replyid");
+			client.msg("someoneElse", "\x1FThis is a simple message\nwith newlines and formatting.", reply);
+			auto lines = client.output.data.lineSplitter.array;
+			assert(lines[$ - 2] == "@+draft/reply=replyid PRIVMSG someoneElse :\x1FThis is a simple message");
+			assert(lines[$ - 1] == "@+draft/reply=replyid PRIVMSG someoneElse :\x1Fwith newlines and formatting.");
+		}
 	}
 }

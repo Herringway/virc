@@ -426,3 +426,181 @@ immutable ubyte[100] ANSIColours = [
 	231,
 	0
 ];
+
+struct ActiveFormatting {
+	bool bold;
+	bool underline;
+	bool strikethrough;
+	bool italic;
+	bool reverse;
+	bool monospace;
+	string colour;
+}
+
+ActiveFormatting checkFormatting(string input) @safe pure {
+	ActiveFormatting result;
+	for (size_t offset; offset < input.length; offset++) {
+		switch (input[offset]) {
+			case ControlCharacters.bold:
+				result.bold ^= true;
+				break;
+			case ControlCharacters.underline:
+				result.underline ^= true;
+				break;
+			case ControlCharacters.italic:
+				result.italic ^= true;
+				break;
+			case ControlCharacters.plain:
+				result.bold = false;
+				result.underline = false;
+				result.strikethrough = false;
+				result.reverse = false;
+				result.monospace = false;
+				result.italic = false;
+				result.colour = "";
+				break;
+			case ControlCharacters.color:
+				bool sawComma;
+				size_t o = offset + 1;
+				size_t seenDigits = 0;
+				for (; o < input.length; o++) {
+					if ((input[o] == ',')) {
+						if ((seenDigits == 0) || sawComma) {
+							break;
+						}
+						sawComma = true;
+						seenDigits = 0;
+						continue;
+					}
+					if ((input[o] < '0') || (input[o] > '9')) {
+						break;
+					}
+					if (++seenDigits > 2) {
+						break;
+					}
+				}
+				if ((o - offset) > 1) {
+					result.colour = input[offset .. o];
+				} else {
+					result.colour = "";
+				}
+				offset = o - 1; //account for loop's offset++
+				break;
+			case ControlCharacters.extendedColor:
+				bool sawComma;
+				size_t o = offset + 1;
+				size_t seenDigits = 0;
+				for (; o < input.length; o++) {
+					if ((input[o] == ',')) {
+						if ((seenDigits == 0) || sawComma) {
+							break;
+						}
+						sawComma = true;
+						seenDigits = 0;
+						continue;
+					}
+					if (!(((input[o] >= '0') && (input[o] <= '9')) ||
+							((input[o] >= 'A') && (input[o] <= 'F')) ||
+							((input[o] >= 'a') && (input[o] <= 'f')))) {
+						break;
+					}
+					if (++seenDigits > 6) {
+						break;
+					}
+				}
+				if ((o - offset) > 1) {
+					result.colour = input[offset .. o];
+				} else {
+					result.colour = "";
+				}
+				offset = o - 1; //account for loop's offset++
+				break;
+			case ControlCharacters.reverse:
+				result.reverse ^= true;
+				break;
+			case ControlCharacters.monospace:
+				result.monospace ^= true;
+				break;
+			case ControlCharacters.strikethrough:
+				result.strikethrough ^= true;
+				break;
+			default: break;
+		}
+	}
+	return result;
+}
+
+@safe pure unittest {
+	with(checkFormatting("")) {
+		assert(bold == false);
+		assert(underline == false);
+		assert(strikethrough == false);
+		assert(italic == false);
+		assert(reverse == false);
+		assert(monospace == false);
+		assert(colour == "");
+	}
+	with(checkFormatting("\x1F")) {
+		assert(bold == false);
+		assert(underline == true);
+		assert(strikethrough == false);
+		assert(italic == false);
+		assert(reverse == false);
+		assert(monospace == false);
+		assert(colour == "");
+	}
+	with(checkFormatting("\x1F\x1F")) {
+		assert(bold == false);
+		assert(underline == false);
+		assert(strikethrough == false);
+		assert(italic == false);
+		assert(reverse == false);
+		assert(monospace == false);
+		assert(colour == "");
+	}
+	with(checkFormatting("\x0310")) {
+		assert(bold == false);
+		assert(underline == false);
+		assert(strikethrough == false);
+		assert(italic == false);
+		assert(reverse == false);
+		assert(monospace == false);
+		assert(colour == "\x0310");
+	}
+	with(checkFormatting("\x0310,12")) {
+		assert(bold == false);
+		assert(underline == false);
+		assert(strikethrough == false);
+		assert(italic == false);
+		assert(reverse == false);
+		assert(monospace == false);
+		assert(colour == "\x0310,12");
+	}
+	with(checkFormatting("\x0310\x03")) {
+		assert(bold == false);
+		assert(underline == false);
+		assert(strikethrough == false);
+		assert(italic == false);
+		assert(reverse == false);
+		assert(monospace == false);
+		assert(colour == "");
+	}
+	with(checkFormatting("\x04FFFFFF")) {
+		assert(bold == false);
+		assert(underline == false);
+		assert(strikethrough == false);
+		assert(italic == false);
+		assert(reverse == false);
+		assert(monospace == false);
+		assert(colour == "\x04FFFFFF");
+	}
+	with(checkFormatting("\x04FFFFFF,000000")) {
+		assert(bold == false);
+		assert(underline == false);
+		assert(strikethrough == false);
+		assert(italic == false);
+		assert(reverse == false);
+		assert(monospace == false);
+		assert(colour == "\x04FFFFFF,000000");
+	}
+}
