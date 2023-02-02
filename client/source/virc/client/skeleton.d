@@ -493,6 +493,12 @@ struct IRCClient {
 		state.batchProcessor.put(line);
 		foreach (batch; state.batchProcessor) {
 			state.batchProcessor.popFront();
+			bool multilineMessageStarted;
+			Message multilineMessage;
+			Target multilineMessageTarget;
+			User multilineMessageUser;
+			MessageMetadata multilineMessageMetadata;
+			multilineMessageMetadata.tags = batch.info.tags;
 			foreach (parsed; batch.lines) {
 				auto metadata = MessageMetadata();
 				metadata.batch = parsed.batch;
@@ -512,6 +518,19 @@ struct IRCClient {
 					if (parsed.sourceUser.get.nickname in internalAddressList) {
 						parsed.sourceUser = internalAddressList[parsed.sourceUser.get.nickname];
 					}
+				}
+				if (metadata.batch.type == "draft/multiline") {
+					auto split = parsed.args;
+					multilineMessageUser = parsed.sourceUser.get;
+					multilineMessageTarget = Target(split.front, server.iSupport.statusMessage, server.iSupport.channelTypes);
+					split.popFront();
+					multilineMessage.type = parsed.verb == "NOTICE" ? MessageType.notice : MessageType.privmsg;
+					if (("draft/multiline-concat" !in parsed.tags) && (multilineMessageStarted)) {
+						multilineMessage.msg ~= "\n";
+					}
+					multilineMessage.msg ~= split.front;
+					multilineMessageStarted = true;
+					continue;
 				}
 
 				if (parsed.verb.filter!(x => !isDigit(x)).empty) {
@@ -534,6 +553,9 @@ struct IRCClient {
 					}
 					default: recUnknownCommand(parsed.verb, metadata); break;
 				}
+			}
+			if (batch.info.type == "draft/multiline") {
+				recMessageCommon(multilineMessageUser, multilineMessageTarget, multilineMessage, multilineMessageMetadata);
 			}
 		}
 	}
@@ -3621,6 +3643,37 @@ version(unittest) {
 			assert(lines[$ - 3] == "@batch=3 PRIVMSG someoneElse :\x1FThis is a simple message");
 			assert(lines[$ - 2] == "@batch=3 PRIVMSG someoneElse :\x1Fwith newlines and formatting.");
 			assert(lines[$ - 1] == "BATCH -3");
+		}
+		{
+			Message[] messages;
+			const(MessageMetadata)[] metadata;
+			client.onMessage = (const User, const Target, const Message msg, const MessageMetadata m) {
+				messages ~= msg;
+				metadata ~= m;
+			};
+			client.put("@msgid=xxx;account=account :n!u@h BATCH +123 draft/multiline #channel");
+			client.put("@batch=123 :n!u@h PRIVMSG #channel hello");
+			client.put("@batch=123 :n!u@h PRIVMSG #channel :");
+			client.put("@batch=123 :n!u@h PRIVMSG #channel :how is ");
+			client.put("@batch=123;draft/multiline-concat :n!u@h PRIVMSG #channel :everyone?");
+			client.put("BATCH -123");
+			assert(messages.length == 1);
+			assert(messages[0].msg == "hello\n\nhow is everyone?");
+			assert(metadata[0].tags["msgid"] == "xxx");
+			client.put("@msgid=xxx2;account=account :n!u@h BATCH +123 draft/multiline #channel");
+			client.put("@batch=123 :n!u@h PRIVMSG #channel :");
+			client.put("@batch=123 :n!u@h PRIVMSG #channel hello");
+			client.put("BATCH -123");
+			assert(messages.length == 2);
+			assert(messages[1].msg == "\nhello");
+			assert(metadata[1].tags["msgid"] == "xxx2");
+			client.put("@msgid=xxx3;account=account :n!u@h BATCH +123 draft/multiline #channel");
+			client.put("@batch=123 :n!u@h PRIVMSG #channel hello");
+			client.put("@batch=123 :n!u@h PRIVMSG #channel :");
+			client.put("BATCH -123");
+			assert(messages.length == 3);
+			assert(messages[2].msg == "hello\n");
+			assert(metadata[2].tags["msgid"] == "xxx3");
 		}
 	}
 	{ //Multiline messages, low line limit

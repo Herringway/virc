@@ -27,6 +27,7 @@ struct BatchProcessor {
 			newBatch.info.referenceTag = processed.referenceTag;
 			newBatch.info.type = processed.type;
 			newBatch.info.parameters = processed.parameters;
+			newBatch.info.tags = processed.tags;
 		}
 		if ("batch" !in msg.tags) {
 			if (processed.isValid) {
@@ -82,22 +83,25 @@ struct BatchProcessor {
 	}
 }
 private struct BatchCommand {
+	import std.typecons : Nullable;
 	import virc.common : User;
-	User source;
+	Nullable!User source;
 	string referenceTag;
 	string type;
 	string[] parameters;
 	bool isNew;
 	bool isValid = false;
+	IRCTags tags;
 	this(IRCMessage msg) @safe pure nothrow {
 		import std.array : array;
 		if (msg.verb != "BATCH") {
 			return;
 		}
 		isValid = true;
-		source = msg.sourceUser.get;
+		source = msg.sourceUser;
 		auto args = msg.args;
 		referenceTag = args.front[1..$];
+		tags = msg.tags;
 		isNew = (args.front[0] == '+');
 		if (isNew) {
 			args.popFront();
@@ -138,6 +142,8 @@ struct BatchInformation {
 	string type;
 	///Miscellaneous details associated with the batch. Meanings vary based on type.
 	string[] parameters;
+	///Tags attached to the opening BATCH verb
+	IRCTags tags;
 }
 @safe pure /+nothrow+/ unittest {
 	import std.algorithm : copy;
@@ -356,6 +362,31 @@ struct BatchInformation {
 		{
 			const batch = takeOne(batchProcessor).front;
 			assert(batch.lines == [IRCMessage("@time=2015-06-26T19:40:31.230Z :remote!foo@example.com PRIVMSG local :I like turtles.")]);
+		}
+		batchProcessor.popFront();
+		assert(batchProcessor.empty);
+	}
+	//Tagged batch
+	{
+		auto batchProcessor = new BatchProcessor;
+		auto lines = [`@tag=value;another=something :irc.host BATCH +yXNAbvnRHTRBv netsplit irc.hub other.host`,
+					`@batch=yXNAbvnRHTRBv :aji!a@a QUIT :irc.hub other.host`,
+					`@batch=yXNAbvnRHTRBv :nenolod!a@a QUIT :irc.hub other.host`,
+					`@batch=yXNAbvnRHTRBv :jilles!a@a QUIT :irc.hub other.host`,
+					`:irc.host BATCH -yXNAbvnRHTRBv`];
+		copy(lines, batchProcessor);
+		{
+			const batch = takeOne(batchProcessor).front;
+			assert(batch.info.type == "netsplit");
+			assert(batch.info.tags["tag"] == "value");
+			assert(batch.info.tags["another"] == "something");
+			assert(batch.info.referenceTag == "yXNAbvnRHTRBv");
+			assert(batch.info.parameters == ["irc.hub", "other.host"]);
+			assert(batch.lines == [
+				IRCMessage("@batch=yXNAbvnRHTRBv :aji!a@a QUIT :irc.hub other.host"),
+				IRCMessage("@batch=yXNAbvnRHTRBv :nenolod!a@a QUIT :irc.hub other.host"),
+				IRCMessage(`@batch=yXNAbvnRHTRBv :jilles!a@a QUIT :irc.hub other.host`)
+			]);
 		}
 		batchProcessor.popFront();
 		assert(batchProcessor.empty);
