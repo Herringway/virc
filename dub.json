@@ -1,6 +1,6 @@
 {
 	"name": "virc",
-	"description": "vibe.d IRC client library",
+	"description": "IRC client library",
 	"copyright": "Copyright © 2016, Cameron \"Herringway\" Ross",
 	"license": "BSL",
 	"authors": ["Herringway"],
