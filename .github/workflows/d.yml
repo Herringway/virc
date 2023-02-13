@@ -23,6 +23,7 @@ jobs:
     - name: 'Test'
       run: |
         dub test
+        dub test :client
   coverage:
     runs-on: ubuntu-latest
     steps:
@@ -38,5 +39,6 @@ jobs:
         COVERALLS_REPO_TOKEN: ${{ secrets.COVERALLS_REPO_TOKEN }}
       run: |
         dub test -b unittest-cov
+        dub test -b unittest-cov :client
         dub fetch doveralls
         dub run doveralls
