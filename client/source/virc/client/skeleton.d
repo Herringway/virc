@@ -1741,6 +1741,13 @@ struct IRCClient {
 			state.receivedSASLAuthenticationText = [];
 		}
 	}
+	private void rec(string cmd : IRCV3Commands.tagmsg)(IRCMessage message, const MessageMetadata metadata) {
+		auto split = message.args;
+		auto user = message.sourceUser.get;
+		auto target = Target(split.front, server.iSupport.statusMessage, server.iSupport.channelTypes);
+		auto msg = Message("", MessageType.tagmsg);
+		recMessageCommon(user, target, msg, metadata);
+	}
 	private void rec(string cmd : IRCV3Commands.note)(IRCMessage message, const MessageMetadata metadata) {
 	}
 	private void rec(string cmd : IRCV3Commands.warn)(IRCMessage message, const MessageMetadata metadata) {
@@ -3736,6 +3743,41 @@ version(unittest) {
 			auto lines = client.output.data.lineSplitter.array;
 			assert(lines[$ - 2] == "@+draft/reply=replyid PRIVMSG someoneElse :\x1FThis is a simple message");
 			assert(lines[$ - 1] == "@+draft/reply=replyid PRIVMSG someoneElse :\x1Fwith newlines and formatting.");
+		}
+	}
+	{ //message-tags
+		auto client = spawnNoBufferClient();
+		Tuple!(const User, "user", const Target, "target", const Message, "message", const MessageMetadata, "metadata")[] messages;
+		client.onMessage = (const User user, const Target target, const Message msg, const MessageMetadata metadata) {
+			messages ~= tuple!("user", "target", "message", "metadata")(user, target, msg, metadata);
+		};
+
+		setupFakeConnection(client);
+
+		// a basic example
+		client.put("@msgid=abc;+example-client-tag=example-value :nick!user@example.com TAGMSG #channel");
+		assert(messages.length == 1);
+		with (messages[0]) {
+			assert(user == User("nick!user@example.com"));
+			assert(target.isChannel);
+			assert(!target.isNickname);
+			assert(target == Channel("#channel"));
+			assert(message == "");
+			assert(message.isReplyable);
+			assert(metadata.tags["msgid"] == "abc");
+			assert(metadata.tags["+example-client-tag"] == "example-value");
+		}
+		// no tags
+		client.put(":nick!user@example.com TAGMSG #channel");
+		assert(messages.length == 2);
+		with (messages[1]) {
+			assert(user == User("nick!user@example.com"));
+			assert(target.isChannel);
+			assert(!target.isNickname);
+			assert(target == Channel("#channel"));
+			assert(message == "");
+			assert(message.isReplyable);
+			assert(metadata.tags == null);
 		}
 	}
 }

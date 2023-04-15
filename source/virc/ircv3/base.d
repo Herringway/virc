@@ -18,6 +18,7 @@ enum IRCV3Commands {
 	fail = "FAIL",
 	warn = "WARN",
 	note = "NOTE",
+	tagmsg = "TAGMSG",
 }
 
 /++

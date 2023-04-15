@@ -25,7 +25,8 @@ struct MessageMetadata {
 +/
 enum MessageType {
 	notice,
-	privmsg
+	privmsg,
+	tagmsg,
 }
 /++
 + An IRC message, passed between clients.
