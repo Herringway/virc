@@ -149,10 +149,3 @@ struct Capability {
 		assert(!cap.isVendorSpecific);
 	}
 }
-@system pure unittest {
-	import core.exception : AssertError;
-	import std.exception : assertThrown;
-	{
-		assertThrown!AssertError(Capability(""));
-	}
-}

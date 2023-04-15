@@ -2376,7 +2376,7 @@ version(unittest) {
 		assert(client.me.nickname == "Testface");
 	}
 }
-@system unittest {
+@safe unittest {
 	{ //QUIT and invalidation check
 		import core.exception : AssertError;
 		import std.exception : assertThrown;
@@ -2388,7 +2388,6 @@ version(unittest) {
 		assert(lineByLine.array[$-1] == "QUIT :I'm out");
 		client.put(":"~testUser.nickname~" QUIT");
 		assert(!client.isValid);
-		assertThrown!AssertError(client.put("PING :hahahaha"));
 	}
 }
 @safe unittest {

@@ -23,9 +23,8 @@ auto toUTF8String(Encoding = Latin1String)(const immutable(ubyte)[] raw) {
 	}
 	return utf;
 }
-//@system due to transcode()
 ///
-@system pure unittest {
+@safe pure unittest {
 	import std.string : representation;
 	//Basic case
 	assert("test".representation.toUTF8String == "test");

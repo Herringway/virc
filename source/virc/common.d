@@ -74,7 +74,7 @@ struct Topic {
 		return message.hashOf;
 	}
 }
-@system pure nothrow @nogc unittest {
+@safe pure nothrow @nogc unittest {
 	assert(Topic("Hello!").toHash == Topic("Hello!").toHash);
 }
 /++
@@ -165,7 +165,7 @@ struct User {
 	user.account = "Tester";
 	assert(user.text == "Test!Testo@Testy (Tester)");
 }
-@system pure nothrow /+@nogc+/ unittest {
+@safe pure nothrow /+@nogc+/ unittest {
 	immutable user = User("Test!Testo@Testy");
 	immutable compUser = User("Test!Testo@Testy");
 	assert(user.toHash == compUser.toHash);
