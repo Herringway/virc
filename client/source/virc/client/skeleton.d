@@ -641,13 +641,50 @@ struct IRCClient {
 		join(only(chan.text), only(key));
 	}
 	public void msg(const string target, const string message, IRCTags tags = IRCTags.init) @safe {
+		outMessageCommon!"PRIVMSG"(target, message, tags);
+	}
+	size_t startBatch(string fmt, T...)(string type, IRCTags tags, T args) {
+		writeTags!("BATCH +%s %s"~fmt)(tags, state.batchCounter, type, args);
+		return state.batchCounter++;
+	}
+	void endBatch(size_t id) @safe {
+		write!"BATCH -%s"(id);
+	}
+	public void tagMsg(const string target, IRCTags tags = IRCTags.init) @safe {
+		outMessageCommon!"TAGMSG"(target, "", tags);
+	}
+	public void wallops(const string message) @safe {
+		write!"WALLOPS :%s"(message);
+	}
+	public void msg(const Target target, const Message message, IRCTags tags = IRCTags.init) @safe {
+		msg(target.targetText, message.text, tags);
+	}
+	public void tagMsg(const Target target, IRCTags tags = IRCTags.init) @safe {
+		tagMsg(target.targetText, tags);
+	}
+	public void ctcp(const Target target, const string command, const string args) @safe {
+		msg(target, Message("\x01"~command~" "~args~"\x01"));
+	}
+	public void ctcp(const Target target, const string command) @safe {
+		msg(target, Message("\x01"~command~"\x01"));
+	}
+	public void ctcpReply(const Target target, const string command, const string args) @safe {
+		notice(target, Message("\x01"~command~" "~args~"\x01"));
+	}
+	public void notice(const string target, const string message, IRCTags tags = IRCTags.init) @safe {
+		outMessageCommon!"NOTICE"(target, message, tags);
+	}
+	public void notice(const Target target, const Message message, IRCTags tags = IRCTags.init) @safe {
+		notice(target.targetText, message.text, tags);
+	}
+	private void outMessageCommon(string cmd)(scope const string target, scope const string message, IRCTags tags) {
 		import std.algorithm.comparison : min;
 		import std.format : sformat;
 		import virc.style : checkFormatting, ControlCharacters;
 		enum breathingRoom = 5;
 		const maxLength = 512 - 14 - breathingRoom - me.nickname.length - me.ident.get("").length - me.host.get("").length - target.length;
 		if (message.length < maxLength && !message.canFind("\n")) {
-			writeTags!"PRIVMSG %s :%s"(tags, target, message);
+			writeTags!(cmd~" %s :%s")(tags, target, message);
 		} else {
 			const batch = isEnabled(Capability("draft/multiline"));
 			auto batchRemainingLines = state.multilineMaxLines;
@@ -672,7 +709,7 @@ struct IRCClient {
 					}
 					const printLine = line[0 .. min(formatting.length + line.length, maxLength, batchRemainingBytes) - formatting.length];
 					const activeFormatting = checkFormatting(printLine);
-					writeTags!"PRIVMSG %s :%s%s"(batchTag, target, formatting, printLine);
+					writeTags!(cmd~" %s :%s%s")(batchTag, target, formatting, printLine);
 					line = line[min(line.length, maxLength, batchRemainingBytes) .. $];
 					if (batch) {
 						batchTag.multilineConcat();
@@ -703,40 +740,6 @@ struct IRCClient {
 				endBatch(id);
 			}
 		}
-	}
-	size_t startBatch(string fmt, T...)(string type, IRCTags tags, T args) {
-		writeTags!("BATCH +%s %s"~fmt)(tags, state.batchCounter, type, args);
-		return state.batchCounter++;
-	}
-	void endBatch(size_t id) @safe {
-		write!"BATCH -%s"(id);
-	}
-	public void tagMsg(const string target, IRCTags tags = IRCTags.init) @safe {
-		writeTags!"TAGMSG %s"(tags, target);
-	}
-	public void wallops(const string message) @safe {
-		write!"WALLOPS :%s"(message);
-	}
-	public void msg(const Target target, const Message message, IRCTags tags = IRCTags.init) @safe {
-		msg(target.targetText, message.text, tags);
-	}
-	public void tagMsg(const Target target, IRCTags tags = IRCTags.init) @safe {
-		tagMsg(target.targetText, tags);
-	}
-	public void ctcp(const Target target, const string command, const string args) @safe {
-		msg(target, Message("\x01"~command~" "~args~"\x01"));
-	}
-	public void ctcp(const Target target, const string command) @safe {
-		msg(target, Message("\x01"~command~"\x01"));
-	}
-	public void ctcpReply(const Target target, const string command, const string args) @safe {
-		notice(target, Message("\x01"~command~" "~args~"\x01"));
-	}
-	public void notice(const string target, const string message) @safe {
-		write!"NOTICE %s :%s"(target, message);
-	}
-	public void notice(const Target target, const Message message) @safe {
-		notice(target.targetText, message.text);
 	}
 	public void changeTopic(const Target target, const string topic) @safe {
 		write!"TOPIC %s :%s"(target, topic);
@@ -3659,6 +3662,15 @@ version(unittest) {
 			assert(lines[$ - 1] == "BATCH -3");
 		}
 		{
+			client.notice("someoneElse", "This is a message\nwith newlines in it.\nDo not be alarmed.");
+			auto lines = client.output.data.lineSplitter.array;
+			assert(lines[$ - 5] == "BATCH +4 draft/multiline someoneElse");
+			assert(lines[$ - 4] == "@batch=4 NOTICE someoneElse :This is a message");
+			assert(lines[$ - 3] == "@batch=4 NOTICE someoneElse :with newlines in it.");
+			assert(lines[$ - 2] == "@batch=4 NOTICE someoneElse :Do not be alarmed.");
+			assert(lines[$ - 1] == "BATCH -4");
+		}
+		{
 			Message[] messages;
 			const(MessageMetadata)[] metadata;
 			client.onMessage = (const User, const Target, const Message msg, const MessageMetadata m) {
@@ -3672,6 +3684,7 @@ version(unittest) {
 			client.put("@batch=123;draft/multiline-concat :n!u@h PRIVMSG #channel :everyone?");
 			client.put("BATCH -123");
 			assert(messages.length == 1);
+			assert(messages[0].type == MessageType.privmsg);
 			assert(messages[0].msg == "hello\n\nhow is everyone?");
 			assert(metadata[0].tags["msgid"] == "xxx");
 			client.put("@msgid=xxx2;account=account :n!u@h BATCH +123 draft/multiline #channel");
@@ -3688,6 +3701,16 @@ version(unittest) {
 			assert(messages.length == 3);
 			assert(messages[2].msg == "hello\n");
 			assert(metadata[2].tags["msgid"] == "xxx3");
+			client.put("@msgid=xxx;account=account :n!u@h BATCH +123 draft/multiline #channel");
+			client.put("@batch=123 :n!u@h NOTICE #channel hello");
+			client.put("@batch=123 :n!u@h NOTICE #channel :");
+			client.put("@batch=123 :n!u@h NOTICE #channel :how is ");
+			client.put("@batch=123;draft/multiline-concat :n!u@h NOTICE #channel :everyone?");
+			client.put("BATCH -123");
+			assert(messages.length == 4);
+			assert(messages[3].type == MessageType.notice);
+			assert(messages[3].msg == "hello\n\nhow is everyone?");
+			assert(metadata[3].tags["msgid"] == "xxx");
 		}
 	}
 	{ //Multiline messages, low line limit
