@@ -3233,7 +3233,7 @@ version(unittest) {
 
 		client.setMetadata("url", "http://www.example.com");
 		assert(client.output.data.lineSplitter().array[$-1] == "METADATA * SET url :http://www.example.com");
-		client.put(":irc.example.com 761 * url * :http://www.example.com");
+		client.put(":irc.example.com 761 client * url * :http://www.example.com");
 		assert(client.ownMetadata["url"] == "http://www.example.com");
 
 		client.setMetadata("url", "http://www.example.com");
@@ -3253,7 +3253,7 @@ version(unittest) {
 
 		client.setMetadata(Channel("#example"), "url", "http://www.example.com");
 		assert(client.output.data.lineSplitter().array[$ - 1] == "METADATA #example SET url :http://www.example.com");
-		client.put(":irc.example.com 761 #example url * :http://www.example.com");
+		client.put(":irc.example.com 761 client #example url * :http://www.example.com");
 		assert(client.channelMetadata[Channel("#example")]["url"] == "http://www.example.com");
 
 		client.setMetadata(User("$a:user"), "url", "http://www.example.com");
@@ -3271,14 +3271,14 @@ version(unittest) {
 		}
 
 		client.setMetadata("url", "http://www.example.com");
-		client.put("FAIL METADATA RATE_LIMIT url 5 :Rate-limit reached. You're going too fast! Try again in 5 seconds.");
+		client.put("FAIL METADATA RATE_LIMITED url 5 :Rate-limit reached. You're going too fast! Try again in 5 seconds.");
 		assert(errors.length == 5);
 		with(errors[4]) {
 			assert(type == ErrorType.standardFail);
 		}
 
 		client.setMetadata("url", "http://www.example.com");
-		client.put("FAIL METADATA RATE_LIMIT url * :Rate-limit reached. You're going too fast!");
+		client.put("FAIL METADATA RATE_LIMITED url * :Rate-limit reached. You're going too fast!");
 		assert(errors.length == 6);
 		with(errors[5]) {
 			assert(type == ErrorType.standardFail);
@@ -3295,9 +3295,9 @@ version(unittest) {
 
 		client.listMetadata(User("user1"));
 		client.put(":irc.example.com BATCH +VUN2ot metadata");
-		client.put("@batch=VUN2ot :irc.example.com 761 user1 url * :http://www.example.com");
-		client.put("@batch=VUN2ot :irc.example.com 761 user1 im.xmpp * :user1@xmpp.example.com");
-		client.put("@batch=VUN2ot :irc.example.com 761 user1 bot-likeliness-score visible-only-for-admin :42");
+		client.put("@batch=VUN2ot :irc.example.com 761 client user1 url * :http://www.example.com");
+		client.put("@batch=VUN2ot :irc.example.com 761 client user1 im.xmpp * :user1@xmpp.example.com");
+		client.put("@batch=VUN2ot :irc.example.com 761 client user1 bot-likeliness-score visible-only-for-admin :42");
 		client.put(":irc.example.com BATCH -VUN2ot");
 		assert(client.userMetadata[User("user1")]["url"] == "http://www.example.com");
 		assert(client.userMetadata[User("user1")]["im.xmpp"] == "user1@xmpp.example.com");
@@ -3307,9 +3307,9 @@ version(unittest) {
 
 		client.getMetadata(User("user1"), "blargh", "splot", "im.xmpp");
 		client.put(":irc.example.com BATCH +gWkCiV metadata");
-		client.put("@batch=gWkCiV 766 user1 blargh :No matching key");
-		client.put("@batch=gWkCiV 766 user1 splot :No matching key");
-		client.put("@batch=gWkCiV :irc.example.com 761 user1 im.xmpp * :user1@xmpp.example.com");
+		client.put("@batch=gWkCiV 766 client user1 blargh :No matching key");
+		client.put("@batch=gWkCiV 766 client user1 splot :No matching key");
+		client.put("@batch=gWkCiV :irc.example.com 761 client user1 im.xmpp * :user1@xmpp.example.com");
 		client.put(":irc.example.com BATCH -gWkCiV");
 		assert("blargh" !in client.userMetadata[User("user1")]);
 		assert("splot" !in client.userMetadata[User("user1")]);

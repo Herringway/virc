@@ -2,6 +2,7 @@
 + Numerics for METADATA specification (post-3.2 WIP)
 +/
 module virc.numerics.metadata;
+import virc.common : User;
 import virc.numerics.definitions;
 
 struct RPL_WhoisKeyValue {
@@ -13,13 +14,14 @@ struct RPL_WhoisKeyValue {
 }
 /++
 +
-+ Format is `760 <Target> <Key> <Visibility> :<Value>`
++ Format is `760 <Client> <Target> <Key> <Visibility> :<Value>`
 +/
 auto parseNumeric(Numeric numeric : Numeric.RPL_WHOISKEYVALUE, T)(T input, string prefixes, string channelTypes) {
 	import std.typecons : Nullable;
 	import virc.numerics.magicparser : autoParse;
 	import virc.target : Target;
 	struct Reduced {
+		User me;
 		string target;
 		string key;
 		string visibility;
@@ -37,7 +39,7 @@ auto parseNumeric(Numeric numeric : Numeric.RPL_WHOISKEYVALUE, T)(T input, strin
 	import virc.common : User;
 	import std.range : only, takeNone;
 	{
-		with(parseNumeric!(Numeric.RPL_WHOISKEYVALUE)(only("someone!test@example.com", "url", "*", "http://www.example.com"), "@", "#").get) {
+		with(parseNumeric!(Numeric.RPL_WHOISKEYVALUE)(only("client", "someone!test@example.com", "url", "*", "http://www.example.com"), "@", "#").get) {
 			assert(target.user == User("someone!test@example.com"));
 			assert(key == "url");
 			assert(visibility == "*");
@@ -73,13 +75,14 @@ struct RPL_KeyValue {
 }
 /++
 +
-+ Format is `761 <Target> <Key> <Visibility>[ :<Value>]`
++ Format is `761 <Client> <Target> <Key> <Visibility>[ :<Value>]`
 +/
 auto parseNumeric(Numeric numeric : Numeric.RPL_KEYVALUE, T)(T input, string prefixes, string channelTypes) {
 	import std.typecons : Nullable;
 	import virc.numerics.magicparser : autoParse, Optional;
 	import virc.target : Target;
 	struct Reduced {
+		User me;
 		string target;
 		string key;
 		string visibility;
@@ -97,7 +100,7 @@ auto parseNumeric(Numeric numeric : Numeric.RPL_KEYVALUE, T)(T input, string pre
 	import std.range : only, takeNone;
 	import virc.common : User;
 
-	with(parseNumeric!(Numeric.RPL_KEYVALUE)(only("someone!test@example.com", "url", "*", "http://www.example.com"), "@", "#").get) {
+	with(parseNumeric!(Numeric.RPL_KEYVALUE)(only("client", "someone!test@example.com", "url", "*", "http://www.example.com"), "@", "#").get) {
 		assert(target== User("someone!test@example.com"));
 		assert(key == "url");
 		assert(visibility == "*");
@@ -108,7 +111,7 @@ auto parseNumeric(Numeric numeric : Numeric.RPL_KEYVALUE, T)(T input, string pre
 	assert(parseNumeric!(Numeric.RPL_KEYVALUE)(only("*"), "@", "#").isNull);
 	assert(parseNumeric!(Numeric.RPL_KEYVALUE)(only("*", "url"), "@", "#").isNull);
 
-	with(parseNumeric!(Numeric.RPL_KEYVALUE)(only("*", "url", "*"), "@", "#").get) {
+	with(parseNumeric!(Numeric.RPL_KEYVALUE)(only("client", "*", "url", "*"), "@", "#").get) {
 		assert(target == "*");
 		assert(key == "url");
 		assert(visibility == "*");
@@ -124,13 +127,14 @@ struct RPL_KeyNotSet {
 }
 /++
 +
-+ Format is `766 <Target> <Key> :no matching key`
++ Format is `766 <Client> <Target> <Key> :no matching key`
 +/
 auto parseNumeric(Numeric numeric : Numeric.RPL_KEYNOTSET, T)(T input, string prefixes, string channelTypes) {
 	import std.typecons : Nullable;
 	import virc.numerics.magicparser : autoParse;
 	import virc.target : Target;
 	struct Reduced {
+		User me;
 		string target;
 		string key;
 		string errorMessage;
@@ -147,29 +151,30 @@ auto parseNumeric(Numeric numeric : Numeric.RPL_KEYNOTSET, T)(T input, string pr
 	import std.range : only, takeNone;
 	import virc.common : User;
 
-	with(parseNumeric!(Numeric.RPL_KEYNOTSET)(only("someone!test@example.com", "examplekey", "no matching key"), "@", "#").get) {
+	with(parseNumeric!(Numeric.RPL_KEYNOTSET)(only("client", "someone!test@example.com", "examplekey", "no matching key"), "@", "#").get) {
 		assert(target== User("someone!test@example.com"));
 		assert(key== "examplekey");
 		assert(humanReadable == "no matching key");
 	}
 
 	assert(parseNumeric!(Numeric.RPL_KEYNOTSET)(takeNone(only("")), "@", "#").isNull);
-	assert(parseNumeric!(Numeric.RPL_KEYNOTSET)(only("someone!test@example.com"), "@", "#").isNull);
-	assert(parseNumeric!(Numeric.RPL_KEYNOTSET)(only("someone!test@example.com", "examplekey"), "@", "#").isNull);
+	assert(parseNumeric!(Numeric.RPL_KEYNOTSET)(only("client"), "@", "#").isNull);
+	assert(parseNumeric!(Numeric.RPL_KEYNOTSET)(only("client", "someone!test@example.com"), "@", "#").isNull);
+	assert(parseNumeric!(Numeric.RPL_KEYNOTSET)(only("client", "someone!test@example.com", "examplekey"), "@", "#").isNull);
 }
 
 /++
 +
-+ Format is `770 :<Key1> [<Key2> ...]` OR
-+ `771 :<Key1> [<Key2> ...]`
-+ `772 :<Key1> [<Key2> ...]`
++ Format is `770 <Client> :<Key1> [<Key2> ...]` OR
++ `771 <Client> :<Key1> [<Key2> ...]`
++ `772 <Client> :<Key1> [<Key2> ...]`
 +/
 auto parseNumeric(Numeric numeric, T)(T input) if ((numeric == Numeric.RPL_METADATASUBOK) || (numeric == Numeric.RPL_METADATAUNSUBOK) || (numeric == Numeric.RPL_METADATASUBS)) {
 	import std.algorithm.iteration : splitter;
 	import std.typecons : Nullable, Tuple;
 	import virc.numerics.magicparser : autoParse;
 	static struct Reduced {
-		string target;
+		User me;
 		string subs;
 	}
 	Nullable!(Tuple!(typeof("".splitter(" ")), "subs")) output = Tuple!(typeof("".splitter(" ")), "subs")();
@@ -212,7 +217,7 @@ struct ERR_MetadataSyncLater {
 }
 /++
 +
-+ Format is `774 <Target>[ <RetryAfter>]`
++ Format is `774 <Client> <Target>[ <RetryAfter>]`
 +/
 auto parseNumeric(Numeric numeric : Numeric.ERR_METADATASYNCLATER, T)(T input, string prefixes, string channelTypes) {
 	import core.time : Duration;
@@ -220,6 +225,7 @@ auto parseNumeric(Numeric numeric : Numeric.ERR_METADATASYNCLATER, T)(T input, s
 	import virc.numerics.magicparser : autoParse, Optional;
 	import virc.target : Target;
 	struct Reduced {
+		User me;
 		string target;
 		@Optional Duration time;
 	}
@@ -229,4 +235,18 @@ auto parseNumeric(Numeric numeric : Numeric.ERR_METADATASYNCLATER, T)(T input, s
 		output = ERR_MetadataSyncLater(Target(reply.get.target, prefixes, channelTypes), Nullable!Duration(reply.get.time));
 	}
 	return output;
+}
+///
+@safe pure nothrow unittest { //Numeric.ERR_METADATASYNCLATER
+	import core.time : seconds;
+	import std.array : array;
+	import std.range : only, takeNone;
+	import virc.common : Channel;
+
+	with(parseNumeric!(Numeric.ERR_METADATASYNCLATER)(only("modernclient", "#bigchan", "4"), "@", "#").get) {
+		assert(target.channel == Channel("#bigchan"));
+		assert(retryAfter == 4.seconds);
+	}
+
+	assert(parseNumeric!(Numeric.ERR_METADATASYNCLATER)(takeNone(only("")), "@", "#").isNull);
 }
