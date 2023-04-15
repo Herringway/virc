@@ -439,6 +439,7 @@ struct IRCClient {
 		bool _isAway;
 		ulong maxMetadataSubscriptions;
 		ulong maxMetadataSelfKeys;
+		size_t maxMetadataValueBytes;
 		const(string)[] metadataSubscribedKeys;
 		Capability[string] availableCapabilities;
 		WhoisResponse[string] whoisCache;
@@ -1020,16 +1021,22 @@ struct IRCClient {
 			case "draft/metadata-2":
 				state.maxMetadataSubscriptions = ulong.max;
 				state.maxMetadataSelfKeys = ulong.max;
+				state.maxMetadataValueBytes = size_t.max;
 				foreach (kv; capDetails.value.splitKeyValues) {
 					switch (kv.key) {
-						case "maxsub":
+						case "max-subs":
 							if (!kv.value.isNull) {
 								state.maxMetadataSubscriptions = kv.value.get.to!ulong;
 							}
 							break;
-						case "maxkey":
+						case "max-keys":
 							if (!kv.value.isNull) {
 								state.maxMetadataSelfKeys = kv.value.get.to!ulong;
+							}
+							break;
+						case "max-value-bytes":
+							if (!kv.value.isNull) {
+								state.maxMetadataValueBytes = kv.value.get.to!ulong;
 							}
 							break;
 						default: break;
@@ -3232,7 +3239,7 @@ version(unittest) {
 		client.onMetadataSubList = (const string str, const MessageMetadata) {
 			subs ~= str;
 		};
-		initializeWithCaps(client, [Capability("draft/metadata-2", "foo,maxsub=50,maxkey=25,bar"), Capability("draft/metadata-notify-2")]);
+		initializeWithCaps(client, [Capability("draft/metadata-2", "foo,max-subs=50,max-keys=25,bar"), Capability("draft/metadata-notify-2")]);
 
 
 		assert(client.state.maxMetadataSubscriptions == 50);

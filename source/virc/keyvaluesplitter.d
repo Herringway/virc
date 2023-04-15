@@ -28,8 +28,8 @@ private auto keyValuePair(string token) pure @safe {
 	import std.algorithm.iteration : map;
 	import std.range : only;
 	{
-		auto split = splitKeyValues("foo,maxsub=50,bar");
-		assert(split.map!(x => x.key).equal(only("foo", "maxsub", "bar")));
+		auto split = splitKeyValues("foo,max-subs=50,bar");
+		assert(split.map!(x => x.key).equal(only("foo", "max-subs", "bar")));
 		assert(split.map!(x => x.value).equal(only(Nullable!string.init, Nullable!string("50"), Nullable!string.init)));
 	}
 }
