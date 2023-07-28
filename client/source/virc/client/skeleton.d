@@ -1647,7 +1647,7 @@ struct IRCClient {
 	private void rec(string cmd : Numeric.RPL_METADATASUBOK)(IRCMessage message, const MessageMetadata metadata) {
 		auto parsed = parseNumeric!(Numeric.RPL_METADATASUBOK)(message.args);
 		if (!parsed.isNull) {
-			foreach (sub; parsed.get.subs) {
+			foreach (sub; parsed.get) {
 				if (!state.metadataSubscribedKeys.canFind(sub)) {
 					state.metadataSubscribedKeys ~= sub;
 				}
@@ -1659,7 +1659,7 @@ struct IRCClient {
 	private void rec(string cmd : Numeric.RPL_METADATAUNSUBOK)(IRCMessage message, const MessageMetadata metadata) {
 		auto parsed = parseNumeric!(Numeric.RPL_METADATAUNSUBOK)(message.args);
 		if (!parsed.isNull) {
-			state.metadataSubscribedKeys = state.metadataSubscribedKeys.filter!(x => !parsed.get.subs.canFind(x)).array;
+			state.metadataSubscribedKeys = state.metadataSubscribedKeys.filter!(x => !parsed.get.canFind(x)).array;
 		} else {
 			tryCall!"onError"(IRCError(ErrorType.malformed), metadata);
 		}
@@ -1667,7 +1667,7 @@ struct IRCClient {
 	private void rec(string cmd : Numeric.RPL_METADATASUBS)(IRCMessage message, const MessageMetadata metadata) {
 		auto reply = parseNumeric!(Numeric.RPL_METADATASUBS)(message.args);
 		if (!reply.isNull) {
-			foreach (sub; reply.get.subs) {
+			foreach (sub; reply.get) {
 				tryCall!"onMetadataSubList"(sub, metadata);
 			}
 		} else {
@@ -3280,21 +3280,21 @@ version(unittest) {
 		}
 
 		client.setMetadata(User("user1"), "$url$", "http://www.example.com");
-		client.put("FAIL METADATA INVALID_KEY $url$ user1 :Invalid key.");
+		client.put("FAIL METADATA KEY_INVALID $url$ user1 :Invalid key.");
 		assert(errors.length == 4);
 		with(errors[3]) {
 			assert(type == ErrorType.standardFail);
 		}
 
 		client.setMetadata("url", "http://www.example.com");
-		client.put("FAIL METADATA RATE_LIMITED url 5 :Rate-limit reached. You're going too fast! Try again in 5 seconds.");
+		client.put("FAIL METADATA RATE_LIMITED * url 5 :Rate-limit reached. You're going too fast! Try again in 5 seconds.");
 		assert(errors.length == 5);
 		with(errors[4]) {
 			assert(type == ErrorType.standardFail);
 		}
 
 		client.setMetadata("url", "http://www.example.com");
-		client.put("FAIL METADATA RATE_LIMITED url * :Rate-limit reached. You're going too fast!");
+		client.put("FAIL METADATA RATE_LIMITED * url * :Rate-limit reached. You're going too fast!");
 		assert(errors.length == 6);
 		with(errors[5]) {
 			assert(type == ErrorType.standardFail);
@@ -3395,20 +3395,20 @@ version(unittest) {
 		assert(client.userMetadata[User("user152")]["bar"] == "dolor sit amet");
 
 		client.subscribeMetadata("avatar", "website", "foo", "bar");
-		client.put(":irc.example.com 770 modernclient :avatar website foo bar");
+		client.put(":irc.example.com 770 modernclient avatar website foo bar");
 		assert(client.isSubscribed("avatar"));
 		assert(client.isSubscribed("website"));
 		assert(client.isSubscribed("foo"));
 		assert(client.isSubscribed("bar"));
 		client.unsubscribeMetadata("foo", "bar");
-		client.put(":irc.example.com 771 modernclient :bar foo");
+		client.put(":irc.example.com 771 modernclient bar foo");
 		assert(!client.isSubscribed("foo"));
 		assert(!client.isSubscribed("bar"));
 
 		client.subscribeMetadata("avatar", "website", "foo", "bar", "baz");
-		client.put(":irc.example.com 770 modernclient :avatar website");
-		client.put(":irc.example.com 770 modernclient :foo");
-		client.put(":irc.example.com 770 modernclient :bar baz");
+		client.put(":irc.example.com 770 modernclient avatar website");
+		client.put(":irc.example.com 770 modernclient foo");
+		client.put(":irc.example.com 770 modernclient bar baz");
 		assert(client.isSubscribed("avatar"));
 		assert(client.isSubscribed("website"));
 		assert(client.isSubscribed("foo"));
@@ -3416,8 +3416,8 @@ version(unittest) {
 		assert(client.isSubscribed("baz"));
 
 		client.subscribeMetadata("foo", "$url", "bar");
-		client.put(":irc.example.com 770 modernclient :foo bar");
-		client.put("FAIL METADATA INVALID_KEY $url :Invalid key");
+		client.put(":irc.example.com 770 modernclient foo bar");
+		client.put("FAIL METADATA KEY_INVALID $url :Invalid key");
 		assert(errors.length == 11);
 		with(errors[10]) {
 			assert(type == ErrorType.standardFail);
@@ -3426,11 +3426,11 @@ version(unittest) {
 		// uh oh zone
 		client.state.metadataSubscribedKeys = [];
 		client.subscribeMetadata("website", "avatar", "foo", "bar", "baz");
-		client.put(":irc.example.com 770 modernclient :website avatar foo bar baz");
+		client.put(":irc.example.com 770 modernclient website avatar foo bar baz");
 		client.subscribeMetadata("email", "city");
 		client.put("FAIL METADATA TOO_MANY_SUBS email :Too many subscriptions!");
 		client.listSubscribedMetadata();
-		client.put(":irc.example.com 772 modernclient :website avatar foo bar baz");
+		client.put(":irc.example.com 772 modernclient website avatar foo bar baz");
 		assert(errors.length == 12);
 		with(errors[11]) {
 			assert(type == ErrorType.standardFail);
@@ -3445,12 +3445,12 @@ version(unittest) {
 
 		client.state.metadataSubscribedKeys = [];
 		client.subscribeMetadata("website", "avatar", "foo");
-		client.put(":irc.example.com 770 modernclient :website avatar foo");
+		client.put(":irc.example.com 770 modernclient website avatar foo");
 		client.subscribeMetadata("email", "city", "country", "bar", "baz");
 		client.put("FAIL METADATA TOO_MANY_SUBS country :Too many subscriptions!");
-		client.put(":irc.example.com 770 modernclient :email city");
+		client.put(":irc.example.com 770 modernclient email city");
 		client.listSubscribedMetadata();
-		client.put(":irc.example.com 772 modernclient :website avatar city foo email");
+		client.put(":irc.example.com 772 modernclient website avatar city foo email");
 		assert(errors.length == 13);
 		with(errors[12]) {
 			assert(type == ErrorType.standardFail);
@@ -3466,12 +3466,12 @@ version(unittest) {
 
 		client.state.metadataSubscribedKeys = [];
 		client.subscribeMetadata("avatar", "website");
-		client.put(":irc.example.com 770 modernclient :avatar website");
+		client.put(":irc.example.com 770 modernclient avatar website");
 		client.subscribeMetadata("foo", "avatar", "website");
 		client.put("FAIL METADATA TOO_MANY_SUBS website :Too many subscriptions!");
-		client.put(":irc.example.com 770 modernclient :foo");
+		client.put(":irc.example.com 770 modernclient foo");
 		client.listSubscribedMetadata();
-		client.put(":irc.example.com 772 modernclient :avatar foo website");
+		client.put(":irc.example.com 772 modernclient avatar foo website");
 		assert(errors.length == 14);
 		with(errors[13]) {
 			assert(type == ErrorType.standardFail);
@@ -3485,9 +3485,9 @@ version(unittest) {
 
 		client.state.metadataSubscribedKeys = [];
 		client.subscribeMetadata("website", "avatar", "foo", "bar", "baz");
-		client.put(":irc.example.com 770 modernclient :website avatar foo bar baz");
+		client.put(":irc.example.com 770 modernclient website avatar foo bar baz");
 		client.listSubscribedMetadata();
-		client.put(":irc.example.com 772 modernclient :avatar bar baz foo website");
+		client.put(":irc.example.com 772 modernclient avatar bar baz foo website");
 		assert(client.isSubscribed("avatar"));
 		assert(client.isSubscribed("foo"));
 		assert(client.isSubscribed("website"));
@@ -3496,11 +3496,11 @@ version(unittest) {
 
 		client.state.metadataSubscribedKeys = [];
 		client.subscribeMetadata("website", "avatar", "foo", "bar", "baz");
-		client.put(":irc.example.com 770 modernclient :website avatar foo bar baz");
+		client.put(":irc.example.com 770 modernclient website avatar foo bar baz");
 		client.listSubscribedMetadata();
-		client.put(":irc.example.com 772 modernclient :avatar");
-		client.put(":irc.example.com 772 modernclient :bar baz");
-		client.put(":irc.example.com 772 modernclient :foo website");
+		client.put(":irc.example.com 772 modernclient avatar");
+		client.put(":irc.example.com 772 modernclient bar baz");
+		client.put(":irc.example.com 772 modernclient foo website");
 		assert(client.isSubscribed("avatar"));
 		assert(client.isSubscribed("foo"));
 		assert(client.isSubscribed("website"));
@@ -3512,25 +3512,25 @@ version(unittest) {
 
 		client.state.metadataSubscribedKeys = [];
 		client.subscribeMetadata("website", "avatar", "foo", "bar", "baz");
-		client.put(":irc.example.com 770 modernclient :website avatar foo bar baz");
+		client.put(":irc.example.com 770 modernclient website avatar foo bar baz");
 		client.listSubscribedMetadata();
-		client.put(":irc.example.com 772 modernclient :avatar bar baz foo website");
+		client.put(":irc.example.com 772 modernclient avatar bar baz foo website");
 		client.unsubscribeMetadata("bar", "foo", "baz");
-		client.put(":irc.example.com 771 modernclient :baz foo bar");
+		client.put(":irc.example.com 771 modernclient baz foo bar");
 		client.listSubscribedMetadata();
-		client.put(":irc.example.com 772 modernclient :avatar website");
+		client.put(":irc.example.com 772 modernclient avatar website");
 		assert(client.isSubscribed("avatar"));
 		assert(client.isSubscribed("website"));
 
 		client.state.metadataSubscribedKeys = [];
 		client.subscribeMetadata("website", "avatar", "foo", "bar", "baz");
-		client.put(":irc.example.com 770 modernclient :website avatar foo bar baz");
+		client.put(":irc.example.com 770 modernclient website avatar foo bar baz");
 		client.listSubscribedMetadata();
-		client.put(":irc.example.com 772 modernclient :avatar bar baz foo website");
+		client.put(":irc.example.com 772 modernclient avatar bar baz foo website");
 		client.subscribeMetadata("avatar", "website");
-		client.put(":irc.example.com 770 modernclient :avatar website");
+		client.put(":irc.example.com 770 modernclient avatar website");
 		client.listSubscribedMetadata();
-		client.put(":irc.example.com 772 modernclient :avatar bar baz foo website");
+		client.put(":irc.example.com 772 modernclient avatar bar baz foo website");
 		assert(client.isSubscribed("avatar"));
 		assert(client.isSubscribed("website"));
 		assert(client.isSubscribed("foo"));
@@ -3539,50 +3539,50 @@ version(unittest) {
 
 		client.state.metadataSubscribedKeys = [];
 		client.subscribeMetadata("avatar", "avatar");
-		client.put(":irc.example.com 770 modernclient :avatar");
+		client.put(":irc.example.com 770 modernclient avatar");
 		client.listSubscribedMetadata();
-		client.put(":irc.example.com 772 modernclient :avatar");
+		client.put(":irc.example.com 772 modernclient avatar");
 		assert(client.isSubscribed("avatar"));
 
 		client.state.metadataSubscribedKeys = [];
 		client.subscribeMetadata("avatar", "avatar");
-		client.put(":irc.example.com 770 modernclient :avatar avatar");
+		client.put(":irc.example.com 770 modernclient avatar avatar");
 		client.listSubscribedMetadata();
-		client.put(":irc.example.com 772 modernclient :avatar");
+		client.put(":irc.example.com 772 modernclient avatar");
 		assert(client.isSubscribed("avatar"));
 
 		client.state.metadataSubscribedKeys = [];
 		client.listSubscribedMetadata();
 		client.unsubscribeMetadata("website");
-		client.put(":irc.example.com 771 modernclient :website");
+		client.put(":irc.example.com 771 modernclient website");
 		assert(!client.isSubscribed("website"));
 		client.listSubscribedMetadata();
 		client.subscribeMetadata("website");
-		client.put(":irc.example.com 770 modernclient :website");
+		client.put(":irc.example.com 770 modernclient website");
 		client.listSubscribedMetadata();
-		client.put(":irc.example.com 772 modernclient :website");
+		client.put(":irc.example.com 772 modernclient website");
 		assert(client.isSubscribed("website"));
 
 		client.state.metadataSubscribedKeys = [];
 		client.listSubscribedMetadata();
-		client.put(":irc.example.com 772 modernclient :website");
+		client.put(":irc.example.com 772 modernclient website");
 		client.unsubscribeMetadata("website", "website");
-		client.put(":irc.example.com 771 modernclient :website");
+		client.put(":irc.example.com 771 modernclient website");
 		assert(!client.isSubscribed("website"));
 
 		client.state.metadataSubscribedKeys = [];
 		client.listSubscribedMetadata();
-		client.put(":irc.example.com 772 modernclient :website");
+		client.put(":irc.example.com 772 modernclient website");
 		client.unsubscribeMetadata("website", "website");
-		client.put(":irc.example.com 771 modernclient :website website");
+		client.put(":irc.example.com 771 modernclient website website");
 		assert(!client.isSubscribed("website"));
 
 		client.state.metadataSubscribedKeys = [];
 		client.subscribeMetadata("avatar", "secretkey", "website");
-		client.put("FAIL METADATA KEY_NO_PERMISSION secretkey modernclient :You do not have permission to do that.");
-		client.put(":irc.example.com 770 modernclient :avatar website");
+		client.put("FAIL METADATA KEY_NO_PERMISSION modernclient secretkey :You do not have permission to do that.");
+		client.put(":irc.example.com 770 modernclient avatar website");
 		client.listSubscribedMetadata();
-		client.put(":irc.example.com 772 modernclient :avatar website");
+		client.put(":irc.example.com 772 modernclient avatar website");
 		assert(!client.isSubscribed("secretkey"));
 		assert(client.isSubscribed("website"));
 		assert(client.isSubscribed("avatar"));
@@ -3593,13 +3593,13 @@ version(unittest) {
 
 		client.state.metadataSubscribedKeys = [];
 		client.subscribeMetadata("$invalid1", "secretkey1", "$invalid2", "secretkey2", "website");
-		client.put("FAIL METADATA KEY_NO_PERMISSION secretkey1 modernclient :You do not have permission to do that.");
+		client.put("FAIL METADATA KEY_NO_PERMISSION modernclient secretkey1 :You do not have permission to do that.");
 		client.put("FAIL METADATA KEY_INVALID $invalid1 modernclient :Invalid key");
-		client.put("FAIL METADATA KEY_NO_PERMISSION secretkey2 modernclient :You do not have permission to do that.");
+		client.put("FAIL METADATA KEY_NO_PERMISSION modernclient secretkey2 :You do not have permission to do that.");
 		client.put("FAIL METADATA KEY_INVALID $invalid2 modernclient :Invalid key");
-		client.put(":irc.example.com 770 modernclient :website");
+		client.put(":irc.example.com 770 modernclient website");
 		client.listSubscribedMetadata();
-		client.put(":irc.example.com 772 modernclient :website");
+		client.put(":irc.example.com 772 modernclient website");
 		assert(!client.isSubscribed("$invalid1"));
 		assert(!client.isSubscribed("secretkey1"));
 		assert(!client.isSubscribed("$invalid2"));

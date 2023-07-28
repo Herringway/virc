@@ -165,43 +165,29 @@ auto parseNumeric(Numeric numeric : Numeric.RPL_KEYNOTSET, T)(T input, string pr
 
 /++
 +
-+ Format is `770 <Client> :<Key1> [<Key2> ...]` OR
-+ `771 <Client> :<Key1> [<Key2> ...]`
-+ `772 <Client> :<Key1> [<Key2> ...]`
++ Format is `770 <Client> <Key1> [<Key2> ...]` OR
++ `771 <Client> <Key1> [<Key2> ...]`
++ `772 <Client> <Key1> [<Key2> ...]`
 +/
 auto parseNumeric(Numeric numeric, T)(T input) if ((numeric == Numeric.RPL_METADATASUBOK) || (numeric == Numeric.RPL_METADATAUNSUBOK) || (numeric == Numeric.RPL_METADATASUBS)) {
-	import std.algorithm.iteration : splitter;
-	import std.typecons : Nullable, Tuple;
-	import virc.numerics.magicparser : autoParse;
-	static struct Reduced {
-		User me;
-		string subs;
-	}
-	Nullable!(Tuple!(typeof("".splitter(" ")), "subs")) output = Tuple!(typeof("".splitter(" ")), "subs")();
-	auto reply = autoParse!Reduced(input);
-	if (!reply.isNull) {
-		output = typeof(output.get).init;
-		output.get.subs = reply.get.subs.splitter(" ");
+	import std.typecons : Nullable;
+	Nullable!(typeof(input)) output;
+	if (input.empty) {
 		return output;
-	} else {
-		return output.init;
 	}
+	input.popFront();
+	output = input;
+	return output;
 }
 ///
-@safe pure nothrow unittest { //Numeric.RPL_METADATASUBOK, Numeric.RPL_METADATAUNSUBOK, Numeric.RPL_METADATASUBS
+@safe pure unittest { //Numeric.RPL_METADATASUBOK, Numeric.RPL_METADATAUNSUBOK, Numeric.RPL_METADATASUBS
 	import std.array : array;
 	import std.range : only, takeNone;
 	import virc.common : User;
 
-	with(parseNumeric!(Numeric.RPL_METADATASUBOK)(only("client", "url example")).get) {
-		assert(subs.array == ["url", "example"]);
-	}
-	with(parseNumeric!(Numeric.RPL_METADATAUNSUBOK)(only("client", "url example")).get) {
-		assert(subs.array == ["url", "example"]);
-	}
-	with(parseNumeric!(Numeric.RPL_METADATASUBS)(only("client", "url example")).get) {
-		assert(subs.array == ["url", "example"]);
-	}
+	assert(parseNumeric!(Numeric.RPL_METADATASUBOK)(only("client", "url", "example")).get.array == ["url", "example"]);
+	assert(parseNumeric!(Numeric.RPL_METADATAUNSUBOK)(only("client", "url", "example")).get.array == ["url", "example"]);
+	assert(parseNumeric!(Numeric.RPL_METADATASUBS)(only("client", "url", "example")).get.array == ["url", "example"]);
 
 	assert(parseNumeric!(Numeric.RPL_METADATASUBOK)(takeNone(only(""))).isNull);
 	assert(parseNumeric!(Numeric.RPL_METADATAUNSUBOK)(takeNone(only(""))).isNull);
