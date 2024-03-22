@@ -690,8 +690,8 @@ struct IRCClient {
 			auto batchRemainingLines = state.multilineMaxLines;
 			auto batchRemainingBytes = state.multilineMaxBytes;
 			auto id = batch ? startBatch!" %s"("draft/multiline", tags, target) : 0;
-			char[] formatting;
 			char[20] formattingBuf;
+			char[] formatting;
 			bool startNewBatch;
 			foreach (line; message.splitter("\n")) {
 				IRCTags batchTag;

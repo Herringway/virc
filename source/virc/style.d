@@ -437,7 +437,7 @@ struct ActiveFormatting {
 	string colour;
 }
 
-ActiveFormatting checkFormatting(string input) @safe pure {
+ActiveFormatting checkFormatting(scope string input) @safe pure {
 	ActiveFormatting result;
 	for (size_t offset; offset < input.length; offset++) {
 		switch (input[offset]) {
