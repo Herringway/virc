@@ -27,6 +27,7 @@ template autoParse(T...) {
 		return output;
 	}
 }
+private immutable utc = UTC();
 Nullable!T tryParse(T, Range)(Range input) if (isInputRange!Range && is(ElementType!Range == string)){
 	import core.time : Duration, seconds;
 	import std.array : empty, front, popFront;
@@ -34,7 +35,6 @@ Nullable!T tryParse(T, Range)(Range input) if (isInputRange!Range && is(ElementT
 	import std.datetime : SysTime;
 	import std.traits : FieldNameTuple, hasIndirections, hasUDA;
 	Nullable!T output = T.init;
-	static immutable utc = UTC();
 	foreach (member; FieldNameTuple!T) {
 		alias MemberType = typeof(__traits(getMember, T, member));
 		if (input.empty) {
