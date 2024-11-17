@@ -575,6 +575,9 @@ struct IRCClient {
 	private void endRegistration() @safe {
 		write("CAP END");
 	}
+	public void sendRaw(string message) @safe {
+		write(message);
+	}
 	public void capList() @safe {
 		write("CAP LIST");
 	}
